@@ -1,0 +1,979 @@
+---
+output: 
+    html_document:
+        code_folding: "hide"
+editor_options: 
+  chunk_output_type: inline
+---
+After running preprocessing and windowing data, here are some checks to make sure the data quality is good and there are no immediate issues that need to be resolved.
+
+This Rmd was mainly for internal use during development and is not as well polished or
+commented as the main analysis scripts.
+
+
+```{r Load packages and files}
+library(here)
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(glue)
+library(tidyr)
+library(gridExtra)
+library(doParallel)
+library(RSQLite)
+library(data.table)
+library(lubridate)
+library(stringi)
+source(here("scripts", "cleaning-helpers.R"))
+source(here("scripts", "windowing-helpers.R"))
+source(here("scripts", "misc-utils.R"))
+
+# Critical dated output directories: change these to latest version
+path_windowed_data <- here("data", "windowed", "windowed-data.csv")
+processed_data_dir <- here("data", "clean", "data-segments")
+
+# Raw files
+path_raw_acc_db <- here("data", "raw", "ruff-acc.db")
+path_raw_acc_db <- "~/ruff-acc.db" # For development/testing
+path_deployment_notes <- here("data", "raw", "logger_deployment_notes.csv")
+
+# Processed files
+beh_obs_file <- here("data", "clean", "ruff_behaviours_adjusted_for_drift.csv")
+path_recording_info <- here("data", "clean", "recording_info.csv")
+segment_summary_file <- here("data", "clean", "segment_summary.csv")
+
+## Parameters
+num_cores <- min(parallel::detectCores(), 20)
+options(digits.secs = 4)
+acc_sr = 50 # sampling rate, Hz (samples / second)
+window_size_secs <- 1
+window_step_secs <- 1
+
+# Helpers
+last <- function(x) {return(x[length(x)])}
+
+# Load up
+windowed_data <- fread(path_windowed_data, tz = "")
+windowed_data$window_start <- ymd_hms(windowed_data$window_start, tz = "CET")
+windowed_data$window_end <- ymd_hms(windowed_data$window_end, tz = "CET")
+
+beh_obs_data <- fread(beh_obs_file, data.table = FALSE, tz = "")
+
+# Remove behaviours that aren't of interest for this iteration
+beh_obs_data <- beh_obs_data %>% 
+    filter(behaviour!="peck at food")
+
+# Convert times to useful format, subset to useful columns
+beh_obs_data <- beh_obs_data %>% 
+    mutate(beh_start_acc = toposix_ymdhms(beh_start_acc),
+           beh_stop_acc = toposix_ymdhms(beh_stop_acc), 
+           beh_start_real = toposix_ymdhms(beh_start_real), 
+           beh_stop_real = toposix_ymdhms(beh_stop_real)) %>%
+  select(recording_id, beh_event_id, behaviour, beh_start_real, beh_stop_real, 
+         beh_start_acc, beh_stop_acc, duration_secs)
+
+# make sure its sorted
+beh_obs_data <- beh_obs_data %>% arrange(recording_id, beh_start_acc)
+
+# Load segment summary: shows segments of continuously scored behaviour
+segment_summary <- fread(segment_summary_file, data.table = FALSE, tz = "") %>%
+    mutate(seg_start_real = toposix_ymdhms(seg_start_real), 
+           seg_start_acc = toposix_ymdhms(seg_start_acc), 
+           seg_stop_real = toposix_ymdhms(seg_stop_real),
+           seg_stop_acc = toposix_ymdhms(seg_stop_acc))
+
+# deployment notes
+deployment_notes <- fread(path_deployment_notes, data.table = FALSE, tz = "")
+
+# recording_info
+recording_info <- fread(path_recording_info, data.table = FALSE, tz = "")
+```
+
+Are there as many windows as expected?
+
+```{r (AUTO) Are there as many windows as expected?}
+# Given the number and duration of behavioural observations, are there enough windows to match this?
+# Duration of every behaviour 
+total_beh_durations <- 
+  difftime(beh_obs_data$beh_stop_acc, 
+           beh_obs_data$beh_start_acc, units = "secs") %>%
+  sum %>% as.numeric()
+
+# Total duration captured by windows, accounting for overlap
+# (might be buggy with different step/size combinations)
+total_window_durations <- 
+  sum(as.numeric(difftime(windowed_data$window_end, 
+                          windowed_data$window_start,
+                          units = "secs"))) / 
+    (window_size_secs/window_step_secs)
+
+deviation_pct <- abs(total_beh_durations - total_window_durations) / total_window_durations * 100
+
+if(deviation_pct < 1.5){
+    print("OK: Sufficient number of windows extracted")
+} else {
+    print(glue("PROBLEM: Too few windows may have been extracted. ", 
+               "Estimated duration: {total_beh_durations}, actual: {total_window_durations}",
+               "deviation: {round(deviation_pct,1)}%"))
+}
+```
+
+Are there any duplicated windows?
+```{r (AUTO) Duplicated windows}
+#Show any duplicate windows (i.e. 2 windows from the same recording at the same time)
+# Checking duplicate issues (can delete later)
+checkdupdat <- windowed_data[,.(recording_id, window_start)]
+duped_rows <- checkdupdat[duplicated(checkdupdat)|duplicated(checkdupdat, fromLast = TRUE),]
+
+if(nrow(duped_rows) == 0){
+    print("OK: No duplicate windows detected")
+} else {
+    print("PROBLEM: Duplicate windows detected")
+    duped_rows
+}
+```
+
+Do the proportions of all behaviours sum to 1?
+```{r (AUTO): Do the proportions of all behaviours sum to 1?}
+#The proportion of all behaviours in an window should sum to 1. A different number could imply that some issue occurred when assigning behaviours to windows. Allow rounding error of 0.025 (can happen in conversion from real time to acc time, especially in short windows)
+thisdat <- windowed_data %>% select(matches("beh_(?!event)", perl = TRUE))
+thisdat$sum <- rowSums(thisdat)
+
+if(!any(thisdat$sum > 1.01 | thisdat$sum < 0.99)){
+    print("OK: No issues with behavioural proportions detected")
+} else{
+    print("PROBLEM: bad behaviour proportions. Number of epochs with each proportion:")
+    table(thisdat$sum)
+}
+## obs.id.i = 38. Two successive beh_squatting or low: being mounted observations resulted in the proportion
+## erroneously being added up to be too high.
+```
+
+Beh_unknown never outside of 0-1 range?
+```{r (AUTO): Beh_unknown never outside of 0-1 range?}
+bad_beh_unknown_low <- windowed_data$beh_unknown < 0
+bad_beh_unknown_high <- windowed_data$beh_unknown > 1
+if (any(bad_beh_unknown_low|bad_beh_unknown_high)){
+    
+    print("beh_unknown has bad values: {sum(bad_beh_unknown_low)} epochs too low, ",
+          " and {sum(bad_beh_unknown_high)} too high")
+} else {
+    print("beh_unknown range OK")
+}
+```
+
+Static Acc scales to ~ 1
+```{r (AUTO) Static Acc scales to ~ 1 (bad check with median scaling?). }
+# Theoretically, the total static acceleration should be close to 1 when a bird 
+# is at rest. Using low obda to infer resting.
+statdat <- windowed_data %>% 
+    left_join(recording_info %>% select(recording_id, matches("scale_[xyz]_deploybias"))) %>%
+    mutate(statXrescale = statX_mean + scale_x_deploybias,
+           statYrescale = statY_mean + scale_y_deploybias,
+           statZrescale = statZ_mean + scale_z_deploybias) %>%
+    filter(ODBA_mean < 0.5) %>%
+    mutate(norm_stat = sqrt(statXrescale^2 + statYrescale^2 + statZrescale^2)) %>% 
+    group_by(recording_id) %>%
+    summarise(mean_stat = mean(norm_stat, na.rm = TRUE),
+              nepochs = n()) 
+  # hist(statXYZ, main = "Total static acceleration histogram (full dataset)")
+  # pct_acc_large_or_small <- sum(statXYZ < 0.9 | statXYZ > 1.1) / length(statXYZ)
+
+if(any(statdat$mean_stat < 0.95| statdat$mean_stat > 1.05)){
+    problematic <- statdat %>% filter(mean_stat > 1.05 | mean_stat < 0.95)
+
+    print(glue("PROBLEM: scaling seems off: static acc average was not equal to ",
+    "one in low ODBA epochs for {nrow(problematic)} recordings"))
+    problematic
+} else{
+  print("OK: Accelerometer scaling seems good")
+}
+```
+
+Check dynamic acc calculation
+```{r (AUTO) Check dynamic acc calculation}
+# Is dynamic indeed raw - static?
+dynamic_recalculated <- (windowed_data$accX_mean - windowed_data$statX_mean)
+if(all(windowed_data$dynX_mean - dynamic_recalculated < .0001)){
+    print("OK: quick static/dynamic calculation sanity check OK")
+} else {
+    print(glue("PROBLEM: dynamic/static values don't add up for ",
+    " {sum(windowed_data$dynX_mean - dynamic_recalculated > .0001)} epochs"))
+}
+```
+
+Unexpected missing values
+```{r (AUTO) Unexpected missing values}
+# Check for NAs in each column (should be a small number of values)
+nas <- map_dbl(windowed_data, ~sum(is.na(.x)))
+
+if(all(nas == 0)){
+    print("OK: No unexpected NA values")
+} else{
+    print(paste0("PROBLEM: unexpected NA values in: ", length(nas[!nas == 0]), " variable(s):"))
+    nas[!nas == 0]
+}
+```
+
+Do transitions seem right?
+```{r (AUTO) transition check}
+all_ok <- TRUE
+# Look at behaviour proportions - if a proportion is ever between 0 and 1 (exclusive)
+# it should be a transition.
+beh_props <- windowed_data %>% select(matches("beh_(?!event)", perl = TRUE))
+trans_beh_props <- map(beh_props, function(x) {x != 0 & x != 1}) %>% 
+    bind_cols()
+trans_beh_props <- rowSums(trans_beh_props) > 0
+if(any(trans_beh_props & !windowed_data$transition)){
+    print("transition problem")
+    all_ok <- FALSE
+}
+# windowed_data[trans_beh_props & !windowed_data$transition, ]
+
+# Check that the first and last beh in a segment is a transition
+trans_segstart <- all(windowed_data %>% group_by(segment_id) %>% 
+        slice_head(n = 1) %>% pull(transition))
+trans_segend <- all(windowed_data %>% group_by(segment_id) %>% 
+        slice_tail(n = 1) %>% pull(transition))
+
+# If a majority behaviour does not match the previous or the next, it should
+# be a transition.
+trans_laglead <- 
+    windowed_data$majority_behaviour != lag(windowed_data$majority_behaviour, default = "none") |
+    windowed_data$majority_behaviour != lead(windowed_data$majority_behaviour, default = "none")
+
+if(any(trans_laglead & !windowed_data$transition)){
+    print("transition_problem")
+    all_ok <- FALSE
+}
+# windowed_data[trans_laglead & !windowed_data$transition, ]
+
+# If there are two event ids, then it should be a transition
+
+trans_eventid <- grepl("_", windowed_data$beh_event_id)
+if(any(trans_eventid & !windowed_data$transition)){
+    print("transition_problem")
+    all_ok <- FALSE
+}
+if(all_ok){
+    print("Transitions look OK")
+}
+#windowed_data[trans_eventid & !windowed_data$transition, ]
+```
+
+
+Missing behaviours
+```{r (AUTO) Missing behaviours}
+nmissing <- sum(is.na(windowed_data$majority_behaviour)) + 
+    sum(windowed_data$majority_behaviour == "")
+if(nmissing > 0){
+    print(glue("PROBLEM: {nmissing} windows had missing behaviours"))
+} else {
+    print("OK: All windows had a behaviour label")
+}
+```
+
+Check large acc values match active behaviours
+```{r Check large acc values match active behaviours}
+# The logger had acc values set to max 16. Check if there are any acc values larger than expected
+large_acc_values <- windowed_data %>% 
+  filter(accX_max > 8 | accY_max > 8 | accZ_max > 8 |
+         accX_min < -8 | accY_min < -8 | accZ_min < -8) %>% 
+    select(recording_id, window_start, window_end, segment_id, win_in_segment_id, window_id, majority_behaviour,
+           transition,
+           matches("^acc[XYZ].*_mean$|^acc[XYZ].*_max$|^acc[XYZ].*_min$"),
+           matches("^beh")) %>%
+  map_if(is.numeric, ~round(.x, 2)) %>%
+  as.data.frame %>%
+  select(where(~ any(. != 0)))
+# Look at possible weird stuff
+possible_issues <- large_acc_values %>% 
+  filter(beh_flying == 0 & beh_preening == 0 & `beh_walking.or.running` == 0 & 
+              `beh_aggressive.posturing` == 0 & beh_other == 0)
+## 18/10/2022: 2 windows causing an issue 46523 and 47457. Both neighbour a flying epoch. 
+# Probably just scoring was a little bit off. Not concerning.
+# windowed_data %>% 
+#     filter(window_id %in% c(46522, 46523, 46524, 47456, 47457, 47458)) %>% select(window_id, matches("beh"))
+if(nrow(possible_issues) >0){
+    print(glue("PROBLEM: {nrow(possible_issues)} Possible issues with large acc values paired with", 
+               " passive behaviours. "))
+    possible_issues
+} else {
+    print("OK: No unexpectedly large acc values paired with passive behaviours")
+}
+```
+
+Bottom-up checks: Raw behaviour file vs fetched windows: 
+Get some samples of raw behaviour observations, then fetch the windowed data to check that it aligns
+```{r Generate bottom-up sample}
+# Helper function to detect overlapping behaviours/windows
+dt_overlap <- function(beh_start_acc, beh_stop_acc, window_cands){
+    ### Take a behaviour interval, candidate windows, and return any windows 
+    #       that overlap with the behaviour. 
+    # Case1: window is completely within bound of behaviour ( beh_start before 
+    #       window start, beh_end after window end)
+    # Case2: Only partial overlap between window & behaviour (beh_start 
+    #       later than window_start but before window_end. beh_end later than 
+    #       window_start but before window_end)
+    # Case3: Behaviour is completely within the time bound of the window 
+    #       (beh_start after window start AND beh_end before window_end)
+    #       Case 3 is a special case of case 2 and doesn't need to be checked
+
+    beh_fills_window <- beh_start_acc <= window_cands$window_start & beh_stop_acc >= window_cands$window_end
+    beh_start_in_window <- beh_start_acc >= window_cands$window_start & beh_start_acc < window_cands$window_end 
+    beh_end_in_window <- beh_stop_acc > window_cands$window_start & beh_stop_acc <= window_cands$window_end
+    
+    window_cands %>% filter(beh_fills_window|beh_start_in_window|beh_end_in_window)
+}
+
+# set.seed(32147)
+sample_behs <- sample(1:nrow(beh_obs_data), 100, replace = FALSE)
+
+b_up_samples <- foreach(i = 1:length(sample_behs), .packages = c('dplyr'), .inorder = FALSE) %do% {
+    ## Get a random snippet of behavioural observation data
+    # Take first sample
+    rownum <- sample_behs[i]
+    # Get initial behaviour
+    init_beh <- beh_obs_data[rownum,]
+    # Prepare a stack of up to 3 adjacent behaviours. Only the sampled one is the 
+    # "target" behaviour, the adjacents are just for checking for consecutive  
+    # instances of the same beahviour
+    random_behs <- init_beh
+    random_behs$target <- TRUE
+    
+    # Sample nearby rows too
+    nextbeh1 <- beh_obs_data[rownum+1,]
+    nextbeh2 <- beh_obs_data[rownum+2,]
+    prevbeh1 <- beh_obs_data[rownum-1,]
+    prevbeh2 <- beh_obs_data[rownum-2,]
+    nextbeh1$target <- FALSE
+    nextbeh2$target <- FALSE
+    prevbeh1$target <- FALSE
+    prevbeh2$target <- FALSE
+    # If there are adjacent behaviours, hold on to them for use in the check
+    if(abs(difftime(init_beh$beh_start_real, prevbeh1$beh_stop_real, "secs")) < 0.01){
+        random_behs <- bind_rows(prevbeh1, random_behs)
+        if(abs(difftime(prevbeh1$beh_start_real, prevbeh2$beh_stop_real, "secs")) < 0.01){
+            random_behs <- bind_rows(prevbeh2, random_behs)
+        }
+
+    }
+    if(abs(difftime(init_beh$beh_stop_real, nextbeh1$beh_start_real, "secs")) < 0.01){
+        random_behs <- bind_rows(random_behs, nextbeh1)
+        if(abs(difftime(nextbeh1$beh_stop_real, nextbeh2$beh_start_real, "secs")) < 0.01){
+            random_behs <- bind_rows(random_behs, nextbeh2)
+        }
+
+    }
+    
+    ## Find windows that corresponds to this set of behaviours start/end times
+    behs_start_time <- random_behs$beh_start_acc[1]
+    behs_end_time <- last(random_behs$beh_stop_acc)
+    candidate_windows <- windowed_data %>% filter(recording_id == random_behs$recording_id[1])
+    corresponding_windows <- dt_overlap(behs_start_time, behs_end_time, candidate_windows)
+        
+#     corresponding_windows <- windowed_data %>% 
+#         filter(recording.id == random_behs$recording.id[1]) %>% 
+# #        filter((window_time_real >= (behs_start_time - buff_window)) & #Use for fixed-width windows?
+#         filter((window_time_real >= (behs_start_time)) & 
+#               (window_time_real) <= (behs_end_time))
+    
+    list(beh_orig = random_behs,
+#         acc_fetched = fetched_raw_acc_dat,
+         windows_fetched = corresponding_windows)
+}
+
+```
+
+```{r Run bottom-up behaviour checks}
+bot_up_results <- vector("list", length(b_up_samples))
+collected_problems <- list()
+for(i in 1:length(b_up_samples)){
+
+    # Only check the target behaviour to minimize interference from neighbours
+    check_status <- ""
+    this_behs <- b_up_samples[[i]]$beh_orig
+    this_beh <- this_behs[this_behs$target,'behaviour']
+    this_beh_window_colname <- paste0('beh_', this_beh)
+    
+    ## If the target behaviour is repeated (directly followed up or preceded by the 
+    ## exact same behaviour), then this check would be buggy, so don't do it
+    duplicated_target <- FALSE
+    
+    if(any(duplicated(this_behs$behaviour))){
+        # If the target behaviour comes up more than once, check if it comes 
+        # twice in a row, or if there is a gap. If it comes twice in a row, it
+        # must be consecutive with the target behaviour.
+        if(any(diff(which(this_behs$behaviour == this_beh)) == 1)){
+                duplicated_target <- TRUE
+                check_status <- "NOT ASSESSABLE: consecutive identical behaviour"
+                bot_up_results[[i]] <- list(sample = i, start_match = NA, 
+                                end_match = NA, 
+                                failures = check_status)
+                next
+        }
+    }
+
+    this_windows <- b_up_samples[[i]]$windows_fetched %>% 
+        select(recording_id, segment_id, win_in_segment_id, loop_j, window_id, 
+               beh_event_id, window_start, window_end,  matches("beh_|major"))
+    
+
+    if(nrow(this_windows) == 0){
+        check_status <- "FAIL: no behs"
+    } else {
+        # ~~~~~~~~~~~~~~~~ Behaviour Checks : ~~~~~~~~~~~~~~~~~~~
+        # Behaviours are first matched to 50Hz data, and then put into epochs.
+        # If window times are 0.50, 0.52, 0.54, and a behaviour was at time
+        # 0.5001, the first time it will appear in the dataset is at 0.52. Find
+        # a way to forgive this.
+        
+        # Get the 'true' start and stop time of the behaviour
+        actual_beh_start <- this_behs[this_behs$target, 'beh_start_acc']
+        actual_beh_stop <- last(this_behs[this_behs$target, 'beh_stop_acc'])
+        
+        # Show the first and last windows that the behaviour was detected in
+        window_this_beh_props <- this_windows[[this_beh_window_colname]]
+        
+        # Find which windows the behaviour should have first been detected in, 
+        # but allow it to have slipped to the next window if right on a boundary
+        # The behaviour has a 0.02 buffer. 
+        beh_should_start_in <- which(actual_beh_start >= this_windows$window_start & 
+                                         actual_beh_start <= this_windows$window_end)
+        beh_allowed_to_start_in <- which(actual_beh_start + 0.02 >= this_windows$window_start & 
+                                         actual_beh_start + 0.02 <= this_windows$window_end)
+        beh_should_stop_in <- which(actual_beh_stop >= this_windows$window_start & 
+                                        actual_beh_stop <= this_windows$window_end)
+        beh_allowed_to_stop_in <- which(actual_beh_stop + 0.02 >= this_windows$window_start & 
+                                        actual_beh_stop + 0.02 <= this_windows$window_end)
+        
+        win_start_shouldbe <- unique(c(beh_should_start_in, beh_allowed_to_start_in))
+        win_stop_shouldbe <- unique(c(beh_should_stop_in, beh_allowed_to_stop_in))
+
+        
+        # Check when a behaviour actually first showed up in the data: finding 
+        # where there are transitions in this behaviour works, it allows for cases
+        # like running -> very short walking -> back to running within one epoch
+        # Transition case 1: proportion of behaviour between 0 and 1 (not including)
+        transitions_frac <- which(window_this_beh_props > 0 & window_this_beh_props < 1)
+        # Transition case 2: behaviour jumps from 0 to 1, or 1 to 0
+        transitions_jump <- which(abs(c(0,diff(window_this_beh_props))) == 1)
+        transitions <- c(transitions_frac, transitions_jump)
+        
+        # Does the beginning and end of a behaviour coincide with a transition? 
+        
+        if(length(win_start_shouldbe) == 0) {
+            start_match <- FALSE
+            check_status <- "FAIL: start not in any of the fetched epochs"
+        } else if(any(map_lgl(win_start_shouldbe, function(x)x %in% transitions))) { 
+            # allows for ambiguous first window i.e. right on boundary
+            start_match <- TRUE
+        } else {
+            start_match <- FALSE
+            check_status <- "FAIL: beh start time was not a transition"
+        }
+        
+        if(length(win_stop_shouldbe) == 0) {
+            end_match <- FALSE
+            check_status <- "FAIL: end not in any of the fetched epochs"
+
+        } else if(any(map_lgl(win_stop_shouldbe, function(x)x %in% transitions))){
+            end_match <- TRUE
+        } else {
+            end_match <- FALSE
+            check_status <- "FAIL: beh end time was not a transition"
+        }
+    }
+    # Save problematic results if any failure to look at afterwards
+    if(grepl("FAIL", check_status)){
+        collected_problems[[paste0("sample", i)]] <- 
+            list(sample = i, start_match = start_match, end_match = end_match,
+                beh = this_beh, 
+                beh_start_acc = actual_beh_start,
+                beh_stop_acc = actual_beh_stop, 
+                dupes_near_window = duplicated_target,
+                windows = this_windows %>% select(where(~ any(. != 0))) %>%
+                    as_tibble,
+                behs = this_behs)
+    }
+    
+    bot_up_results[[i]] <- list(sample = i, start_match = start_match, 
+                                end_match = end_match, 
+                                failures = check_status)
+}
+# If "FAIL" is not detected
+sample_failed_check <- 
+    grepl("fail", tolower(map_chr(bot_up_results, ~.x[['failures']])))
+
+if(all(!sample_failed_check)){
+    print("Bottom-up behaviour calculation check OK")
+} else {
+    n_fails <- sum(sample_failed_check)
+    print(glue("PROBLEM: Bottom-up behaviour check had: {n_fails}", 
+               " failure(s). See debug results for details"))
+    Reduce(rbind, bot_up_results)
+}
+# Reduce(rbind, bot_up_results)
+
+```
+```{r Probe bottom-up check errors}
+# Reduce(rbind, bot_up_results)
+# Reduce(rbind, bot_up_results) |> as.data.frame() |> filter(failures != "")
+
+# # Check if behaviour could be the first or last in a segment, then it will definitely 
+# # come up as an error
+# wins <- collected_problems[[4]]$windows
+# seg <- wins$segment_id |> unique()
+# max <- windowed_data |> filter(segment_id == seg) |> pull(window_id) |> max()
+# min <- windowed_data |> filter(segment_id == seg) |> pull(window_id) |> min()
+# max %in% wins$window_id | min %in% wins$window_id
+
+# Find the target behaviour, see what's going on with it.
+# collected_problems[[1]]$behs |> 
+#     mutate(beh_start_acc = prtime(beh_start_acc,2),
+#            beh_stop_acc = prtime(beh_stop_acc,2)) |>
+#     select(beh_event_id, behaviour, beh_start_acc, beh_stop_acc, 
+#            duration_secs, target)
+# 
+# collected_problems[[1]]$windows %>% 
+#     select(window_id, beh_event_id, window_start, window_end, majority_behaviour, matches("beh")) |>
+#     View()
+
+
+# map(collected_problems, ~.x[c('start_match', 'end_match', 'behs')])
+
+### Comments
+## Sometimes the first or last behaviour in a segment trips the error catching
+## because I later decided to filter beh_unknown majority epochs out of the 
+## dataset.
+```
+Top-down checks: Processed windows vs fetched behaviours and fetched raw acc data
+Pick an window from preprocessed window data file, go and fetch original raw acc data and accelerometer data that corresponds to it, cross-check.
+```{r Generate Top-down samples (pick random windows and check the data)}
+# cl <- makePSOCKcluster(num_cores)
+# registerDoParallel(cl)
+# set.seed(123)
+sample_windows <- windowed_data[sample(1:nrow(windowed_data),500),]
+t_dwn_samples <- foreach(i = 1:nrow(sample_windows), .packages = c('dplyr'), .inorder = FALSE) %do% {
+    this_window <- sample_windows[i,, drop = FALSE]
+    
+    ## Fetch original beh data
+    time_start_acc <- this_window$window_start
+    time_end_acc <- this_window$window_end # + window_window_size
+    
+    recid <- this_window$recording_id
+    matching_beh <- 
+        beh_obs_data %>% 
+        filter(recording_id == recid) %>%
+        filter(beh_stop_acc > time_start_acc & beh_start_acc < time_end_acc)
+    
+    ## Fetch original acc data
+    
+    fetched_dat <- get_raw_acc_segment(recording_id = recid, 
+                                       segment_start = time_start_acc,
+                                       segment_end = time_end_acc,
+                                       path_db = path_raw_acc_db,
+                                       buffer_secs = 3)
+    fetched_dat$datetime <- ymd_hms(fetched_dat$datetime, tz = "CET")
+    list(orig_window = this_window, 
+         fetched_acc = fetched_dat, 
+         fetched_beh = matching_beh)
+}
+```
+
+```{r Top-down checks: behaviours}
+
+get_overlap <- function(windowstart, windowend, behstart, behend){
+    behstart_in_window <- behstart < windowend & behstart >= windowstart
+    behend_in_window <- behend <= windowend & behend > windowstart
+    beh_starttime <- NA
+    beh_endtime <- NA
+    if(behstart_in_window) {
+        beh_starttime <- behstart
+    }else if(!behstart_in_window){
+        beh_starttime <- windowstart
+    }
+    if(behend_in_window) {
+        beh_endtime <- behend
+    }else if(!behend_in_window){
+        beh_endtime <- windowend
+    }
+    window_duration <- windowend - windowstart
+    beh_duration <- beh_endtime - beh_starttime
+    
+    if(is.na(beh_starttime)|is.na(beh_endtime))
+        stop("Error calculating overlap - invalid times derived")
+    overlap <- as.numeric(beh_duration)/as.numeric(window_duration)
+    return(overlap)
+}
+top_down_beh_debugerrors <- list()
+top_down_beh_results <- vector("list", length(t_dwn_samples))
+
+for(i in 1:length(t_dwn_samples)){
+    orig_window <- t_dwn_samples[[i]]$orig_window
+    fetched_behs <- t_dwn_samples[[i]]$fetched_beh
+    fetched_acc <- t_dwn_samples[[i]]$fetched_acc
+    failure <- ""
+
+    ## Behaviour checks
+    # Do the behaviours match what is shown in the window?
+    # Find behaviour start/end times that overlap with the window. Any behaviours
+    # should be represented in the expected proportion
+    
+    # Are all expected beh IDs given?
+    ids_good <- TRUE
+    window_beh_ids <- orig_window$beh_event_id
+    fetched_beh_ids <- fetched_behs$beh_event_id
+    missing_events <- fetched_beh_ids[!map_lgl(fetched_beh_ids, 
+                                               ~grepl(.x, window_beh_ids))]
+    if(length(missing_events) > 0){
+        # If an event is missing, be forgiving if it is within the sampling rate 
+        # gap at the beginning/end of the window
+        missing_event_stop <- fetched_behs[fetched_behs$beh_event_id == 
+                                              missing_events, "beh_stop_acc"]
+        missing_event_start <- fetched_behs[fetched_behs$beh_event_id == 
+                                              missing_events, "beh_start_acc"]
+        winstart <- orig_window$window_start
+        winend <- orig_window$window_end
+        offset_winstart <- as.numeric(difftime(winstart, missing_event_stop, "secs"))
+        offset_winend <- as.numeric(difftime(winend, missing_event_start, "secs"))
+        if(abs(offset_winstart) > 0.02 & abs(offset_winend) > 0.02){
+            ids_good <- FALSE
+            message(paste0("beh IDs didnt match for i = ", i))
+            message(paste0(" expected: ", window_beh_ids, "; actual: ", fetched_beh_ids))
+            failure <- "FAIL: wrong beh_event_ids"
+        }
+    }
+    # Are behaviours given in the correct proportions?
+    props <- data.frame(behaviour = rep(NA, nrow(fetched_behs)),
+                        orig_window = rep(NA, nrow(fetched_behs)),
+                        actual = rep(NA, nrow(fetched_behs)),
+                        match = rep(NA, nrow(fetched_behs)))
+
+    if (nrow(fetched_behs) == 0 ){
+            failure <- "FAIL: no fetched behaviours found"
+    } else {
+        for(j in 1:nrow(fetched_behs)){
+            this_beh <- fetched_behs[j,]
+            this_beh_name <- this_beh$behaviour
+            props[j,'behaviour'] <- this_beh_name
+            props[j,'orig_window'] <- orig_window[[paste0("beh_", this_beh_name)]]
+            # Work out the correct proportion
+            props[j,'actual'] <- 
+              get_overlap(windowstart = orig_window$window_start, 
+                          windowend = orig_window$window_end, 
+                          behstart = this_beh$beh_start_acc, 
+                          behend = this_beh$beh_stop_acc)
+        }
+        props <- props %>% group_by(behaviour) %>% summarise(orig_window = first(orig_window),
+                                                    actual = sum(actual))
+        # allow error up to 0.02 to account for sampling rate: if sample is 
+        # 1.42s, 1.44s, 1.46s, and a behaviour starts at 1.420001, then it won't be 
+        # seen in the data until 1.44
+        props[,'match'] <- abs(props[,'orig_window'] - props[,'actual']) <= 0.0201
+    
+        ## Results
+        if(!all(props$match)) failure <- "FAIL: proportions didn't match"
+    }
+
+    top_down_beh_results[[i]] <- list(sample = i,
+                                   beh_ids = ids_good, 
+                                   beh_props = all(props$match),
+                                   failures = failure)
+    
+      if(grepl("fail", tolower(failure))){
+          top_down_beh_debugerrors[[paste0("sample", i)]] <- 
+              list(sample = i, 
+                   window_beh_ids = window_beh_ids, 
+                   fetched_beh_ids = fetched_beh_ids,
+                   props = props)  
+      }
+}
+problems <- grepl("fail", tolower(map(top_down_beh_results, ~.x[['failures']])))
+if(all(!problems)){
+    print("Top-down behaviour calculation check OK")
+} else{
+    print(glue("PROBLEM: Top-down behaviour check had: {sum(problems)} failures"))
+}
+# Reduce(rbind,top_down_beh_results)
+
+```
+```{r Top-down checks: Acc values}
+top_down_acc_results <- vector("list", length(t_dwn_samples))
+top_down_acc_debugerrors <- list()
+
+for(i in 1:length(t_dwn_samples)){
+    orig_window <- t_dwn_samples[[i]]$orig_window
+    fetched_acc <- t_dwn_samples[[i]]$fetched_acc
+    recid <- orig_window$recording_id
+    failed <- ""
+
+    # Re-scale the original data
+    thisinfo <- recording_info %>% 
+      filter(recording_id == recid)
+    fetched_acc$accX <- fetched_acc$accX * thisinfo$scale_x_6O - thisinfo$scale_x_deploybias
+    fetched_acc$accY <- fetched_acc$accY * thisinfo$scale_y_6O - thisinfo$scale_y_deploybias
+    fetched_acc$accZ <- fetched_acc$accZ * thisinfo$scale_z_6O - thisinfo$scale_z_deploybias
+
+    
+    ## Feature calculation checks
+    # Compute several key values on acc dat
+    # statX, statY, statZ, dynX, dynX, dynY, dynZ, jerkRMS, auc_trap, AR1, pwr_top1_freq, pwr_top1_pwr.
+
+    ## Computations on raw acc data
+    fetched_acc$statX <- data.table::frollmean(fetched_acc$accX, 100, fill=NA, 
+                                algo="fast", align="center")
+    fetched_acc$statY <- data.table::frollmean(fetched_acc$accY, 100, fill=NA, 
+                                algo="fast", align="center")
+    fetched_acc$statZ <- data.table::frollmean(fetched_acc$accZ, 100, fill=NA, 
+                                algo="fast", align="center")
+    fetched_acc$dynX <- fetched_acc$accX - fetched_acc$statX
+    fetched_acc$dynY <- fetched_acc$accY - fetched_acc$statY
+    fetched_acc$dynZ <- fetched_acc$accZ - fetched_acc$statZ
+
+    fetched_acc$ODBA <- abs(fetched_acc$dynX) + abs(fetched_acc$dynY) + abs(fetched_acc$dynZ)
+    
+    ## Reconstruct window from raw acc data
+    # Get the labelled start and end time of window
+    window_start <- orig_window$window_start
+    window_end <- orig_window$window_end
+    # Grab rows of raw acc data that correspond to the window time
+    rows <- which(abs(fetched_acc$datetime - window_start) < 
+                      0.01):(which(abs(fetched_acc$datetime - window_end) < 0.01)-1)
+    matching_acc_dat <- fetched_acc[rows,]
+    
+    ## Check computations
+    # raw, static, dynamic, odba: mean & sd
+    window_reconst <- matching_acc_dat %>% 
+        select(matches("X|Y|Z|ODBA")) %>%
+        summarise(across(everything(), list(mean = mean, sd = sd), .names = "{.col}_{.fn}"))
+    
+    vars_to_check <- names(window_reconst)
+    basic_check <- all(map_lgl(vars_to_check, ~window_reconst[[.x]] - orig_window[[.x]] < 0.000001))
+    
+    if(is.na(basic_check)){
+        failed <- "FAIL: basic check had na values"
+    } else{
+        if(!(basic_check)) 
+            failed <- "FAIL: basic check values did not match"
+    }
+
+
+    # HAR-related features
+    checks_HAR <- data.frame(vars = c('RMS_X', 'IQR_Y', 'P2P_Z', 'MAV_X', 'WL_X', 
+                                      'LD_Y', 'AR1_Z', 'AR2_X', 'AR3_Y', 'AR4_Z', 'sig_pwr_X',
+                                      'CV_Y', 'pct_10_Z', 'trapAUC_Y', 'MC_Z'),
+                             orig = NA, recal = NA, match = NA)
+    checks_HAR[checks_HAR$vars == 'RMS_X', c('orig','recal')] <- 
+        c(orig_window$RMS_X, sqrt(mean(matching_acc_dat$dynX^2)))
+    checks_HAR[checks_HAR$vars == 'IQR_Y', c('orig','recal')] <- 
+        c(orig_window$IQR_Y, IQR(matching_acc_dat$dynY))
+    checks_HAR[checks_HAR$vars == 'P2P_Z', c('orig','recal')] <-
+        c(orig_window$P2P_Z, max(matching_acc_dat$dynZ) - min(matching_acc_dat$dynZ))
+    checks_HAR[checks_HAR$vars == 'MAV_X', c('orig','recal')] <- 
+        c(orig_window$MAV_X, mean(abs(matching_acc_dat$dynX)))
+    checks_HAR[checks_HAR$vars == 'WL_X', c('orig','recal')] <- 
+        c(orig_window$WL_X, 
+          sum(abs(matching_acc_dat$dynX[-1] - 
+                      matching_acc_dat$dynX[-length(matching_acc_dat$dynX)])))
+    checks_HAR[checks_HAR$vars == 'LD_Y', c('orig','recal')] <- 
+        c(orig_window$LD_Y, exp(mean(log(abs(matching_acc_dat$dynY)))))
+    checks_HAR[checks_HAR$vars == 'AR1_Z', c('orig','recal')] <- 
+        c(orig_window$AR1_Z, ar(matching_acc_dat$dynZ, aic = FALSE, order.max = 4)$ar[1])
+    checks_HAR[checks_HAR$vars == 'AR2_X', c('orig','recal')] <- 
+        c(orig_window$AR2_X, ar(matching_acc_dat$dynX, aic = FALSE, order.max = 4)$ar[2])
+    checks_HAR[checks_HAR$vars == 'AR3_Y', c('orig','recal')] <- 
+        c(orig_window$AR3_Y, ar(matching_acc_dat$dynY, aic = FALSE, order.max = 4)$ar[3])
+    checks_HAR[checks_HAR$vars == 'AR4_Z', c('orig','recal')] <-
+        c(orig_window$AR4_Z, ar(matching_acc_dat$dynZ, aic = FALSE, order.max = 4)$ar[4])
+    checks_HAR[checks_HAR$vars == 'sig_pwr_X', c('orig','recal')] <- 
+        c(orig_window$sig_pwr_X, sum(matching_acc_dat$dynX^2))
+    checks_HAR[checks_HAR$vars == 'CV_Y', c('orig','recal')] <- 
+        c(orig_window$CV_Y, sd(matching_acc_dat$dynY) / mean(matching_acc_dat$dynY))
+    checks_HAR[checks_HAR$vars == 'pct_10_Z', c('orig','recal')] <- 
+        c(orig_window$pct_10_Z, quantile(matching_acc_dat$dynZ, c(0.1)))
+    checks_HAR[checks_HAR$vars == 'trapAUC_Y', c('orig','recal')] <- 
+        c(orig_window$trapAUC_Y, 
+          (sum(diff(1:length(matching_acc_dat$dynY)) * 
+                   (head(abs(matching_acc_dat$dynY),-1)+
+                        tail(abs(matching_acc_dat$dynY),-1)))/2))
+    checks_HAR[checks_HAR$vars == 'MC_Z', c('orig','recal')] <- 
+        c(orig_window$MC_Z, 
+          sum(diff(matching_acc_dat$dynZ < median(matching_acc_dat$dynZ)) != 0))
+    checks_HAR$match <- (checks_HAR$orig - checks_HAR$recal) < 0.001
+
+    check_HAR <- all(checks_HAR$match)
+    if(is.na(check_HAR)){
+        failed <- "FAIL: HAR check had na values"
+    } else{
+        if(!(check_HAR)) 
+            failed <- "FAIL: HAR check values did not match"
+    }
+
+    ## Cross-check FFT calculations
+    rows_FFT_start <- (which(abs(fetched_acc$datetime - window_start) < 0.01) - 
+                           window_size_secs * acc_sr)
+    rows_FFT_end <- (which(abs(fetched_acc$datetime - (window_end + 1)) < 0.01) + 
+                         window_size_secs * acc_sr)
+    matching_fft_window <- fetched_acc[rows_FFT_start:rows_FFT_end,]
+
+    this_PSD <- matching_fft_window$accX %>% 
+        detrend_time_series %>% 
+        fft %>% 
+        FFT_to_PSD(sr = 50)
+    
+    PSD_binned <- bin_PSD(this_PSD, n_bins = 10, maxfreq = 25)
+    # Series of checks: if everything is TRUE, then the power calculation was implemented 
+    # for this window as expected 
+    
+    PSD_match <- all(orig_window$pwr_Hz_0_X - PSD_binned[1,]$powerAv < 0.01,
+        orig_window$pwr_Hz_0.3_X - PSD_binned[2,]$powerAv < 0.01,
+        orig_window$pwr_Hz_1.8_X - PSD_binned[3,]$powerAv < 0.01,
+        orig_window$pwr_Hz_4.5_X - PSD_binned[4,]$powerAv < 0.01,
+        orig_window$pwr_Hz_7.2_X - PSD_binned[5,]$powerAv < 0.01,
+        orig_window$pwr_Hz_9.8_X - PSD_binned[6,]$powerAv < 0.01,
+        orig_window$pwr_Hz_12.5_X - PSD_binned[7,]$powerAv < 0.01)
+    
+    ##
+    
+    if(is.na(PSD_match)){
+        failed <- "FAIL: FFT check had na values"
+    } else{
+        if(!(PSD_match)) 
+            failed <- "FAIL: FFT check values did not match"
+    }
+
+    top_down_acc_results[[i]] <- list(
+        sample = i,
+        basic_feats = basic_check,
+        HAR_feats = check_HAR,
+        PSD_checks = PSD_match,
+        failures = failed
+    )
+    if(grepl("FAIL", failed)){
+        top_down_acc_debugerrors[[paste0("sample", i)]] <- 
+            list(sample = i, 
+                 orig_window = orig_window,
+                 basics_reconstituted = window_reconst,
+                 HARs = checks_HAR)  
+    }
+}
+# Reduce(rbind, top_down_acc_results)
+failures <- map_chr(top_down_acc_results, ~.x[['failures']])
+if(all(failures == "")){
+    print("Top-down accelerometer calculation check OK")
+} else{
+    print(paste0("Top-down accelerometer check had failures: n = ", sum(grepl("fail", tolower(failures)))))
+    bind_rows(top_down_acc_results) %>% filter(failures != "")
+}
+
+```
+```{r Examine top-down checks}
+# bind_rows(top_down_beh_results) %>% filter(failures != "")
+# bind_rows(top_down_acc_results) %>% filter(failures != "")
+# top_down_acc_debugerrors
+
+## Minor issue with LD_Y calculation coming up as 0.000000 when in data 0.00389.
+## Not a concern
+
+```
+
+```{r (AUTO): Cross-check power calculations}
+# Check fft/PSD and detrend functions are correct
+time <- 1:150
+signal_A <- sin(time) #~7-8 HZ signal
+signal_B <- sin(time) + 2*sin(time/5) # ~1.6Hz signal added
+# plot(x = time, y = signal_A, type = 'l')
+# plot(x = time, y = signal_B, type = 'l')
+
+PSD_A <- signal_A %>% 
+  detrend_time_series %>% 
+  fft %>% 
+  FFT_to_PSD(sr = 50)
+
+PSD_B <- signal_B %>% 
+  detrend_time_series %>% 
+  fft %>% 
+  FFT_to_PSD(sr = 50)
+
+top_A_Hz <- PSD_A %>% top_n(power, n= 1) %>% pull(freq_Hz) # Should be a strong ~8Hz signal, and rest weak
+#plot(PSD_A, type = 'l')
+top_B_Hz <- PSD_B %>% top_n(power, n=2) %>% pull(freq_Hz) # Should be strong ~8Hz and ~1.66Hz signals, rest weak
+#plot(PSD_B, type = 'l')
+if(top_A_Hz == 8 & all(top_B_Hz - c(1.66666, 8) < 0.00001)){
+    print("OK: FFT_to_PSD function gives expected results")
+} else{
+    print("PROBLEM: FFT_to_PSD function gives unexpected results")
+}
+```
+
+(MAN): Visual inspection of ODBA for different behaviours
+ODBA should be higher for behaviours like flying and running, compared with resting.
+Note only a sample of data for each category is used
+```{r Plot overall mean ODBA of flying, shaking, running and resting, fig.height=8, message=FALSE, warning=FALSE}
+# Create subsets for data without mixed windows, ambiguous behaviours or transitions}
+clean_windowed_data <- windowed_data %>% filter(transition==0)
+
+plot_all_windows <- windowed_data %>%
+    group_by(majority_behaviour) %>%
+    slice_sample(n = 500, replace = TRUE) %>%
+    ggplot(aes(x = majority_behaviour, y = accY_max)) +
+    geom_jitter(width=0.2, alpha=0.2, colour="dark blue", pch = 1, size = 0.5) +
+    geom_boxplot(outlier.shape=NA, alpha = 0.4) +
+        theme_bw() +
+    labs(title = "All windows", x = "Behaviour", y = "Mean ODBA") +
+    theme(panel.grid=element_blank(),
+          axis.text.x = element_text(angle = 30, vjust = 1, hjust=1))
+
+plot_pure_windows <- plot_all_windows %+% (clean_windowed_data %>%
+    group_by(majority_behaviour) %>%
+    slice_sample(n = 500, replace = TRUE)) + 
+    ggtitle("Clean windows")
+
+# plot_pure_windows <- clean_windowed_data %>%
+#     # filter(majority_behaviour %in% c("beh_flying", "beh_preening", "beh_running", 
+#     #                                "beh_sitting rest")) %>%
+#     ggplot(aes(x = majority_behaviour, y = accY_max)) +
+#     theme_bw() +
+#     ggtitle("Transitions excluded") +
+#     theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank(), 
+#           axis.text.x = element_text(angle = 30, vjust = 1, hjust=1))+
+#     ylab("Mean ODBA")+
+#     xlab("\n Behaviour")+
+#     geom_jitter(width=0.2, alpha=0.3, colour="dark blue") +
+#     geom_boxplot(outlier.shape=NA, alpha = 0.4)
+
+grid.arrange(plot_all_windows, plot_pure_windows, nrow=1)
+```
+
+(MAN): Visual inspection of ODBA by recording ID
+```{r Check mean ODBA against various behaviours for each recording, fig.height=10, fig.width=12}
+clean_windowed_data %>% 
+    filter(majority_behaviour %in% c("flying", "walking or running", "resting")) %>%
+    ggplot(aes(x = majority_behaviour, y = ODBA_mean)) +
+    facet_wrap(~recording_id, nrow=4)+
+    theme_bw()+
+    ggtitle("Pure windows only")+
+    theme(panel.grid.minor=element_blank(), panel.grid.major=element_blank(), 
+          axis.text.x = element_text(angle = 30, vjust = 1, hjust=1))+
+    ylab("Mean ODBA")+
+    xlab("\n Behaviour")+
+    geom_boxplot(outlier.shape=NA)+
+    geom_jitter(width=0.2, alpha=0.4, colour="dark blue")
+```
+Some of the low ODBA values during full flight seem to be own error during scoring - it was difficult to be accurate with the start/stop times of these highly dynamic behaviours within a fraction of a second. We are trying to account for this by labelling a "transition" period either side of the start of each behaviour (the 'mixed' window and the windows before and after it are labelled as 'transition'), but some will inevitably still slip through.
+
+(MAN) Number of windows of each behaviour
+```{r Summarise number of pure windows of each behaviour}
+all.beh <- windowed_data %>% group_by(majority_behaviour) %>% 
+    summarise(n=n()) %>% arrange(majority_behaviour)
+no.transitions <- windowed_data %>% 
+    group_by(majority_behaviour) %>% 
+    filter(transition==0) %>%
+    summarise(n_without.transition.ie.clean=n()) %>% 
+    arrange(majority_behaviour) # also exclude ambiguous
+table <- full_join(all.beh, no.transitions) %>% arrange(n, n_without.transition.ie.clean)
+table
+#pander(table)
+```
+
