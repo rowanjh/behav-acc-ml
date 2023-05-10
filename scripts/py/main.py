@@ -56,7 +56,7 @@ def main(parameters):
 
     # parameters used to calculate runtime
     start = time.time()
-    log_datetime = time.strftime('%Y-%m-%d %H.%M.%OS2')
+    log_datetime = time.strftime('%Y-%m-%d_%H.%M.%OS2')
 
     # saves logs to a file (standard output redirected)
     base_path = pyprojroot.find_root(pyprojroot.has_dir(".git"))
