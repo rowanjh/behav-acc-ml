@@ -1,16 +1,18 @@
 # ~~~~~~~~~~~~~~~ Script overview ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
-#' Aulsebrook et al. (2023) Paper Title
+#' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
+#' using accelerometry and machine learning: challenges and opportunities.
 #' 
 #' github.com/...
 #'
 #' Purpose: 
-#'      This script preprocesses raw accelerometer data with the following steps
+#'      This script preprocesses raw data, and exports csv files with scaled and 
+#'      labelled accelerometer data. The following steps are included:
 #'      1. Calculate accelerometer clock error
-#'      2. Adjust behaviour observation times to match accelerometer times
-#'      3. 6-O calibrations
-#'      4. Static bias calibrations 
-#'      5. Extract contiguous segments of accelerometer data that have 
-#'         behavioural scoring
+#'      2. Adjust behaviour observation times to match accelerometer clock times
+#'      3. Calculate 6-O calibrations factors
+#'      4. Calculate Static bias calibration factors
+#'      5. Label contiguous segments of accelerometer data with behaviour scoring
+#'      
 #'
 #' Notes:
 #'      We extract segments of accelerometer data that have behaviour labels. 
@@ -31,8 +33,7 @@
 # ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
 # ---- Start logging ---
 log_start_time <- Sys.time()
-log_start_time_label <- format(Sys.time(), "%Y-%m-%d_%H%M")
-print(paste0("Cleaning data. Start time: ", log_start_time_label))
+print(paste0("Cleaning data. Start time: ", log_start_time))
 
 # ---- Packages ---
 packages <- 
@@ -48,6 +49,7 @@ packages <-
       "data.table")
 lapply(packages, require, character.only = TRUE)
 source(here("scripts", "cleaning-helpers.R"))
+source(here("scripts", "misc-utils.R"))
 
 # ---- Script Inputs ---
 path_raw_beh       <- here("data", "raw", "ruff_behaviour_tidy_2022-11-16.csv")
@@ -56,7 +58,7 @@ path_raw_acc_db    <- here("data", "raw", "ruff-acc-data.db")
 path_6O_calib_info <- here("data", "raw", "calibration_recordings_6O_Apr2022.csv")
 dir_acc_calib_data <- here("data", "raw", "6O_calibration_files")
 
-# For devleopment
+# For development #TODO remove this
 path_raw_acc_db    <- "~/ruff-acc.db"
 
 # ---- Load deployment notes ---

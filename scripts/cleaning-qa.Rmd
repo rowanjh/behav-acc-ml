@@ -32,7 +32,8 @@ source(here("scripts","cleaning-helpers.R"))
 processed_data_dir <- here("data","clean","data-segments")
 
 # Raw files
-path_raw_acc_db <- "~/ruff-acc.db"
+path_raw_acc_db <- here("data", "raw", "ruff-acc-data.db")
+path_raw_acc_db <- "~/ruff-acc.db" #TODO remove this for final version
 path_deploy_notes <- here("data", "raw", "logger_deployment_notes.csv")
 path_6O_calib_info <- here("data", "raw", "calibration_recordings_6O_Apr2022.csv")
 dir_acc_calib_data <- here("data", "raw", "6O_calibration_files")
