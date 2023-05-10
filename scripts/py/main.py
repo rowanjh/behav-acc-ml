@@ -124,6 +124,8 @@ def main(parameters):
     hours, rem = divmod(end - start, 3600)
     minutes, seconds = divmod(rem, 60)
     print("\nFinal time elapsed: {:0>2}:{:0>2}:{:05.2f}\n".format(int(hours), int(minutes), seconds))
+    print(f"output path: {out_dir}")
+
 
 
 # ~~~~~~~~~~~~~~ Parameters ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
