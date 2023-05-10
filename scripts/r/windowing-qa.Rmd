@@ -24,9 +24,9 @@ library(RSQLite)
 library(data.table)
 library(lubridate)
 library(stringi)
-source(here("scripts", "cleaning-helpers.R"))
-source(here("scripts", "windowing-helpers.R"))
-source(here("scripts", "misc-utils.R"))
+source(here("scripts", "r", "cleaning-helpers.R"))
+source(here("scripts", "r", "windowing-helpers.R"))
+source(here("scripts", "r", "misc-utils.R"))
 
 # Critical dated output directories: change these to latest version
 path_windowed_data <- here("data", "windowed", "windowed-data.csv")

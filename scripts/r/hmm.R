@@ -37,7 +37,7 @@ library(purrr)
 library(glue)
 library(fitdistrplus, include.only = "fitdist")
 library(doParallel)
-source(here("scripts", "hmm-helpers.R"))
+source(here("scripts", "r", "hmm-helpers.R"))
 select <- dplyr::select
 
 # ---- Script inputs ---
@@ -47,7 +47,7 @@ timesplit_fold_spec <- here("config", "timesplit-folds_2023-05-09_2007.csv")
 dist_spec_path <-      here("config", "shmm-distributions_2023-01-13.csv")
 
 # Specify "LSIO_fold" or "timesplit_fold" to determine which split method to use
-fold_type <- "LSIO_fold"
+fold_type <- "timesplit_fold"
 
 # ---- Load data ---
 dat <- fread(path_windowed_data, data.table = FALSE)
@@ -147,7 +147,7 @@ if(fold_type == "LSIO_fold"){
         fold7 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_mean', 'ratio_VeDBA_pdynY_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_YZ'),
         fold8 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_YZ'),
         fold9 = c('accZ_median', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR2_Y', 'AR3_Z', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_F75_Z', 'CSA_prev_YZ'),
-        fold10 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'CSA_prev_YZ'),
+        fold10 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'CSA_prev_YZ')
     )
 }
 
@@ -322,7 +322,7 @@ registerDoSEQ()
 # ---- Save results ----
 print("------------Saving results-----------------")
 
-out_dir <- here("outputs", "hmm-results", start_time_string)
+out_dir <- here("outputs", "hmm-results", fold_type, start_time_string)
 
 # Save results
 if(!dir.exists(out_dir)) 

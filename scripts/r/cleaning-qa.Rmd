@@ -26,7 +26,7 @@ library(data.table)
 library(lubridate)
 library(stringi)
 library(patchwork)
-source(here("scripts","cleaning-helpers.R"))
+source(here("scripts", "r", "cleaning-helpers.R"))
 
 # Critical dated output directory: change to latest version
 processed_data_dir <- here("data","clean","data-segments")

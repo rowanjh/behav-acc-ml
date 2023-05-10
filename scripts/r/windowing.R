@@ -42,8 +42,8 @@ packages <-
       "moments",
       "dtw")
 lapply(packages, library, character.only = TRUE)
-source(here("scripts", "windowing-helpers.R"))
-source(here("scripts", "misc-utils.R"))
+source(here("scripts", "r", "windowing-helpers.R"))
+source(here("scripts", "r", "misc-utils.R"))
 
 # ---- Script Inputs ---
 dir_cleaned_data <- here("data", "clean", "data-segments")
@@ -275,7 +275,7 @@ all_windows <- all_windows %>%
 # Remove any windows with beh_unknown as majority. These aren't used in analysis
 all_windows <- all_windows %>% filter(majority_behaviour != "beh_unknown")
 
-out_path <- here("data", "windowed", "windowed_data.csv")
+out_path <- here("data", "windowed", "windowed-data.csv")
 
 print(paste0("Data windowing finished. Duration: ", 
              round(difftime(Sys.time(), log_start_time, units = 'mins'), 1), 

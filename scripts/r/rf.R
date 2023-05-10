@@ -40,12 +40,13 @@ suppressMessages({
     library(here)
     library(tidymodels)
     library(themis)
+    library(FCBF)
     library(colino)
     library(doParallel)
     library(glue)
     library(data.table)
 })
-source(here("scripts", "rf-helpers.R"))
+source(here("scripts", "r", "rf-helpers.R"))
 
 # ---- Parse command line arguments (if any) ---
 myargs <- commandArgs(trailingOnly=TRUE)

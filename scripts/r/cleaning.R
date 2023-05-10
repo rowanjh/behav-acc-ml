@@ -48,8 +48,8 @@ packages <-
       "tidyr",
       "data.table")
 lapply(packages, require, character.only = TRUE)
-source(here("scripts", "cleaning-helpers.R"))
-source(here("scripts", "misc-utils.R"))
+source(here("scripts", "r", "cleaning-helpers.R"))
+source(here("scripts", "r", "misc-utils.R"))
 
 # ---- Script Inputs ---
 path_raw_beh       <- here("data", "raw", "ruff_behaviour_tidy_2022-11-16.csv")
