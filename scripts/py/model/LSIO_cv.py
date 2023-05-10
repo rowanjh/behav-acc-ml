@@ -18,11 +18,11 @@ from sklearn.model_selection import StratifiedKFold
 from data_processing.sliding_window import apply_sliding_window
 from misc.osutils import mkdir_if_missing
 from model.DeepConvLSTM import DeepConvLSTM
-from model.evaluate import evaluate_LOSOcv_scores
+from model.evaluate import evaluate_LSIOcv_scores
 from model.train import train
 import json
 
-def LOSO_cv(data, folds_to_run, args):
+def LSIO_cv(data, folds_to_run, args):
     """
     Method to apply cross-participant cross-validation (also known as leave-one-subject-out cross-validation).
     :param data: numpy array
@@ -105,8 +105,8 @@ def LOSO_cv(data, folds_to_run, args):
             train_preds['segment_id'] = data['win_segment_id'][(data['win_fold'] != fold) & np.logical_not(data['transition'])]
             train_preds['window_start_time'] = data['win_start'][(data['win_fold'] != fold) & np.logical_not(data['transition'])]
         else:
-            train_preds['segment_id'] = data['win_segment_id'][data['win_fold'] != fold ],
-            train_preds['window_start_time'] = data['win_start'][data['win_fold'] != fold],
+            train_preds['segment_id'] = data['win_segment_id'][data['win_fold'] != fold ]
+            train_preds['window_start_time'] = data['win_start'][data['win_fold'] != fold]
 
 
         class_label_inverter = {v: k for k, v in args.classes.items()}
@@ -171,13 +171,13 @@ def LOSO_cv(data, folds_to_run, args):
         tv_gap.to_csv(os.path.join(log_dir, 'train_val_gap.csv'))
 
     # Evaluate whole analysis
-    evaluate_LOSOcv_scores(participant_scores=cv_scores,
+    evaluate_LSIOcv_scores(participant_scores=cv_scores,
                                 gen_gap_scores=train_val_gap,
                                 input_cm=all_eval_output,
                                 class_names=args.classes.keys(),
                                 nb_subjects=len(args.folds_to_run),
                                 filepath=log_dir,
-                                filename='LOSO_CV',
+                                filename='LSIO_CV',
                                 args=args
                                 )
 

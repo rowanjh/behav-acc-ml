@@ -39,7 +39,7 @@ import pandas as pd
 import torch
 from data_processing.load_dataset import load_dataset
 from data_processing.sliding_window import apply_sliding_window
-from model.LOSO_cv import LOSO_cv
+from model.LSIO_cv import LSIO_cv
 from model.train import predict
 from misc.logging import Logger
 from misc.torchutils import seed_torch
@@ -116,8 +116,8 @@ def main(parameters):
         Xdf.to_csv(os.path.join(out_dir, f'dclstm_windows_{log_datetime}.csv'))
 
     # ---- Training and cross-validation ----
-    # LOSO splitting
-    trained_net = LOSO_cv(windowed_data, parameters.folds_to_run, parameters)
+    # LSIO splitting uses the(Leave One Individual Out) 
+    trained_net = LSIO_cv(windowed_data, parameters.folds_to_run, parameters)
 
     # calculate time data creation took
     end = time.time()
@@ -134,12 +134,14 @@ class ParamHolder(object):
         return vars(parameters)
 
 parameters = ParamHolder()
+# sliding window params
 parameters.sw_length = 1
 parameters.sw_unit = 'seconds'
 parameters.sw_overlap = 50
 parameters.sampling_rate = 50
 parameters.nb_channels = 3
 
+# neural network architecture
 parameters.network = 'deepconvlstm'
 parameters.no_lstm = False
 parameters.nb_units_lstm = 256
@@ -157,6 +159,7 @@ parameters.pool_type = 'max'
 parameters.pool_kernel_width = 2
 parameters.reduce_layer_output = 8
 
+# training
 parameters.seed = 1
 parameters.valid_epoch = 'best'
 parameters.batch_size = 512
@@ -170,12 +173,12 @@ parameters.gpu = "cuda" if torch.cuda.is_available() else "cpu"
 parameters.weighted = True
 parameters.shuffling = True
 parameters.adj_lr = False
-
 parameters.lr_step = 10
 parameters.lr_decay = 0.9
 parameters.early_stopping = True
 parameters.es_patience = 15
 
+#outputs
 parameters.name = 'ruff'
 parameters.logging = True
 parameters.print_counts = False
@@ -251,6 +254,9 @@ if "--batchnorm" in sys.argv:
 if "--savewindoweddata" in sys.argv:
     print("OPTION: saving windowed data file")
     parameters.save_windowed_data = True
+if "--test" in sys.argv:
+    print("OPTION: excluding transitions")
+    parameters.dummy_data = True
 
 # ~~~~~~~~~~~~~~ Run models ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
 

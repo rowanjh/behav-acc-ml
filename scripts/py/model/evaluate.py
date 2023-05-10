@@ -86,7 +86,7 @@ def plot_confusion_matrix(input, target_names, title='Confusion matrix', cmap=No
         plt.savefig(output_path)
 
 
-def evaluate_LOSOcv_scores(participant_scores, gen_gap_scores, input_cm, class_names, nb_subjects, filepath, filename, args):
+def evaluate_LSIOcv_scores(participant_scores, gen_gap_scores, input_cm, class_names, nb_subjects, filepath, filename, args):
     """
     Function which prints evaluation metrics of each participant, overall average and saves confusion matrix
 
