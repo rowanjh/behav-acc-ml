@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=dcLSTM-batchnorm-notrans        # job name
+#SBATCH --job-name=dcLSTM-batchnorm        # job name
 #SBATCH -N 1			 # node count
 #SBATCH -n 8                     # CPU count
 #SBATCH -p gpu			 # set job for GPU node
