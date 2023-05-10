@@ -7,7 +7,6 @@
 #' Purpose: 
 #'      This script runs deep learning models. A 1-second sliding window is 
 #'      applied with 50% overlap.
-#'      
 #'
 #' Notes:
 #'      Instructions: installation with conda recommended
@@ -22,9 +21,13 @@
 #'      
 #'      Modified from Bock et al.'s (2021) original code available here:
 #'      https://github.com/mariusbock/dl-for-har
-#'      Many parameters were customizable through command line arguments in 
-#'      Bock's code, but were hard-coded here to simplify.
-#'      Likely still works python 3.7+ (not tested)
+#'      The original script had more diverse functionality, such as customizing
+#'      all parameters through command line arguments, but this was greatly 
+#'      simplified. Several other changes were made to the pipeline such as 
+#'      implementing windowing prior to cross-validation, and changing log  
+#'      output paths. Some parts of the codebase are unused.
+#'      
+#'      Built with python 3.10, but likely works python 3.7+ (not tested)
 #'
 #' Date created:
 #'      May 2, 2023
@@ -152,7 +155,7 @@ parameters.conv_block_type = 'normal'
 parameters.nb_conv_blocks = 2
 parameters.nb_filters = 64
 parameters.filter_width = 11
-parameters.dilation = 1
+parameters.dilation = 1     # i.e. regular convolution, no dilation
 parameters.drop_prob = 0.5
 parameters.pooling = False
 parameters.batch_norm = False
