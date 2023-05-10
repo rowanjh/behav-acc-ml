@@ -189,7 +189,7 @@ parameters.save_windowed_data = False
 
 # Should transitions be excluded from training folds in cross-validation 
 # (transitions always remain in validation folds)
-parameters.train_excluding_transitions = True
+parameters.train_excluding_transitions = False
 
 parameters.classes = {
         'aggressive posturing': 0, 
@@ -233,6 +233,9 @@ parameters.dummy_data = False
 
 ### Parse command line arguments for customized analysis
 # note: prints won't get captured by Logger() defined in the main function.
+if "--notrans" in sys.argv:
+    print("OPTION: excluding transitions")
+    parameters.train_excluding_transitions = True
 if "--2layer" in sys.argv:
     print("OPTION: running with 2 layers")
     parameters.nb_layers_lstm = 2

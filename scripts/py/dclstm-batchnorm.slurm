@@ -16,4 +16,4 @@ module load anaconda3
 source ~/.bashrc
 conda activate dclstm
 python --version
-python -u main.py --batchnorm --notrans
+python -u main.py --batchnorm
