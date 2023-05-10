@@ -390,7 +390,7 @@ bot_up_results <- vector("list", length(b_up_samples))
 collected_problems <- list()
 for(i in 1:length(b_up_samples)){
 
-    # Only check the target behaviour to minimize interference from neighbours
+    # Only check the target behaviour to minimise interference from neighbours
     check_status <- ""
     this_behs <- b_up_samples[[i]]$beh_orig
     this_beh <- this_behs[this_behs$target,'behaviour']

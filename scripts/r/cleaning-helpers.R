@@ -257,7 +257,7 @@ get_clock_error <- function(recording_id, calib_time, plot = TRUE) {
     return(list(clock_error_secs = clock_error_secs, plot = plot))
 }
 
-#' Visualize clock error and automated calibration event detection
+#' Visualise clock error and automated calibration event detection
 #' 
 #' Helper function that plots accelerometry against time since calibration for 
 #' a given data frame
@@ -299,7 +299,7 @@ vis_clock_error <- function(df, clock_error, cal_time) {
 #'
 #' @param target_time (POSIXct) time at which clock error will be estimated
 #' @param calib_time (POSIXct) the time at which the calibration 
-#'      occurred (e.g. from an atomic clock-synchronized time server).
+#'      occurred (e.g. from an atomic clock-synchronised time server).
 #' @param calib_error accelerometer clock error (seconds) at the calibration
 #' 
 #' Times should be provided as POSIXct.

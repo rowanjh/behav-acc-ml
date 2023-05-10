@@ -21,7 +21,7 @@
 #'      
 #'      Modified from Bock et al.'s (2021) original code available here:
 #'      https://github.com/mariusbock/dl-for-har
-#'      The original script had more diverse functionality, such as customizing
+#'      The original script had more diverse functionality, such as customising
 #'      all parameters through command line arguments, but this was greatly 
 #'      simplified. Several other changes were made to the pipeline such as 
 #'      implementing windowing prior to cross-validation, and changing log  

@@ -53,7 +53,7 @@ segment_summary <- read.csv(here("data", "clean", "segment_summary.csv"))
 segment_summary <- segment_summary |>
     mutate(duration = toposix_ymdhms(seg_stop_real) - 
                           toposix_ymdhms(seg_start_real)) |>
-    arrange(desc(duration)) # send long files to the cores first, more optimized
+    arrange(desc(duration)) # send long files to the cores first, more optimised
 
 behaviour_labels <- read.csv(beh_file_path) |> pull(behaviour) |> unique()
 
@@ -111,7 +111,7 @@ results <- foreach(i = 1:nrow(segment_summary), .packages = packages,
     windowed_data$segment_id <- this_seg_id
     windowed_data$loop_j <- 1:nrow(windowed_data)
     
-    # Initialize columns for the proportion of a window scored as each behavior
+    # Initialise columns for the proportion of a window scored as each behavior
     windowed_data <- windowed_data %>% 
         cbind(as.data.frame(matrix(0, nrow = nrow(windowed_data), 
                                    ncol = length(behaviour_labels))) %>%

@@ -20,7 +20,7 @@
 #'      following Garde et al. 2022 (doi: 10.1111/2041-210X.13804).
 #'      Acceleration bias (e.g. due to differences in harness fit and orientation) is
 #'      also corrected by centering X/Y/Z values on the median.
-#'      All timestamps in raw data are in internet-synchronized real time, 
+#'      All timestamps in raw data are in internet-synchronised 'real time', 
 #'      except for the raw accelerometer data which subject to clock drift.
 #'      Behaviour timings are adjusted for accelerometer drift, so timestamps 
 #'      from behaviours match the accelerometer.
@@ -442,7 +442,7 @@ outpath_beh_adjusted <- here("data", "clean", "ruff_behaviours_adjusted_for_drif
 outpath_recording_info <- here("data", "clean", "recording_info.csv")
 outpath_segment_summary <- here("data", "clean", "segment_summary.csv")
 
-# Convert POSIX times to character with customized rounding of fractional secs
+# Convert POSIX times to character with customised rounding of fractional secs
 beh_data <- beh_data |> 
     mutate_at(c('beh_start_acc', 'beh_stop_acc'), ~prtime(., 2))
 

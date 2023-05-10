@@ -27,7 +27,7 @@ custom_cv_split <- function(data, split_id_col){
 
 #' Convenience function for cross validation
 #' 
-#' Wrapper that runs tune_grid() with extra conveniences including initializing 
+#' Wrapper that runs tune_grid() with extra conveniences including initialising 
 #' parallel computing and saving results
 #' 
 #' @param workflow
@@ -94,7 +94,7 @@ save_cv_output <- function(tunegrid_obj, wf, out_dir, label){
     preds_all <- collect_predictions(tunegrid_obj, summarize = FALSE)
     fwrite(preds_all, file.path(thisdir, "collect_predictions.csv"))
     # Save computed metrics: 
-    # summarized over folds
+    # summarised over folds
     collect_metrics <- collect_metrics(tunegrid_obj)
     fwrite(collect_metrics, file.path(thisdir, "collect_metrics_summary.csv"))
     # separate for each fold

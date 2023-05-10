@@ -174,7 +174,7 @@ get_rows_for_window <- function(window_index, sample_rate, win_size, win_step){
 
 #' Compute various features from Human Activity Recognition literature
 #'
-#' All rows in the input dataset will be summarized, resulting in a single 
+#' All rows in the input dataset will be summarised, resulting in a single 
 #' output value for each feature
 #'
 #' @param df (data.frame) dataset assumed to contain the columns dynX, dynY, 
@@ -340,11 +340,11 @@ calc_CSA <- function(thisdat, prevdat, nextdat){
 
 ### ======= Frequency-based features -------------
 # Note: the FFT only uses 2^n points, so only the first 128 points from the time  
-# series.. might be able to optimize insead of pulling out 150.
+# series.. might be able to optimise instead of pulling out 150.
 
 #' Compute frequency-based features derived from a fast fourier transform
 #'
-#' All rows in the input dataset will be summarized, resulting in a single 
+#' All rows in the input dataset will be summarised, resulting in a single 
 #' output value for each feature
 #'
 #' @param df (data.frame) accelerometer dataset assumed to have columns accX, 

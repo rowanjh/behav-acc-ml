@@ -1,5 +1,5 @@
 ##################################################
-# All functions related to plotting and visualizing data
+# All functions related to plotting and visualising data
 ##################################################
 # Author: Kristof Van Laerhoven
 # Email: kvl(at)eti.uni-siegen.de

@@ -114,7 +114,7 @@ beh_labels <- hmmdat |>
     arrange(desc(outcome))
 
 # ~~~~~~~~~~~~~~~ Implement cross-validation ~~~~~~~~~~~~~~~~~~~~~~~~----
-# ---- Initialize ---
+# ---- Initialise ---
 print("------------Starting supervised HMM-----------------")
 nclasses <- length(unique(hmmdat$outcome))
 classes <- levels(hmmdat$outcome)
@@ -287,7 +287,7 @@ outputs <- foreach(fold = 1:10, .packages = c('dplyr','purrr','glue')) %dopar% {
                 # Get the product of all densities to estimate the likelihood of 
                 # this observation if it was emitted by this class
                 probs[row,j] <- unlist(densities) |> reduce(`*`)
-                # TODO: vectorize and tidy this process
+                # TODO: vectorise and tidy this process
             }
         }
         
