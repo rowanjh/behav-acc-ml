@@ -72,7 +72,7 @@ run_CV <- function(workflow, cv_folds, tuning_grid, metrics,
 #'
 save_cv_output <- function(tunegrid_obj, wf, out_dir, label){
     # Output dir for this model workflow
-    thisdir <- glue("{out_dir}{label}")
+    thisdir <- file.path(out_dir, label)
     if (!dir.exists(thisdir))
         dir.create(thisdir, recursive = TRUE)
     

@@ -2,10 +2,9 @@
 #'
 #' @param class_seq (factor) a sequence of temporally consecutive labels 
 #'          (i.e. no time gaps)
-get_trans_mat <- function(class_seq){
+get_trans_mat <- function(class_seq, classes){
     l <- length(class_seq)
     transitions <- list()
-    classes <- levels(class_seq)
     for (i in classes){
         # Where does this behaviour appear in the sequence
         w <- which(class_seq[1:(l-1)] == classes[i])

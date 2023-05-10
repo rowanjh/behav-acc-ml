@@ -66,13 +66,13 @@ if(!run_randstrat & !run_LSIO & !run_timesplit){
     run_randstrat <- TRUE
     run_LSIO <- TRUE
     run_timesplit <- TRUE
-    message(glue("Running all stratified, LSIO, and timesplit models"))
+    message(glue("Running all randstrat, LSIO, and timesplit models"))
 }
 
 # ---- Script inputs ---
-path_windowed_data  <- here("data", "windowed", "windowed_data.csv") 
+path_windowed_data  <- here("data", "windowed", "windowed-data.csv") 
 lsio_fold_spec        <- here("config", "lsio-folds_2022-11-16.csv")
-timesplit_fold_spec <- here("config", "timesplit-folds_2023-01-03_1541.csv")
+timesplit_fold_spec <- here("config", "timesplit-folds_2023-05-09_2007.csv")
 
 # ---- Parameters ---
 n_CPU_cores <- min(10, parallel::detectCores())
@@ -98,7 +98,7 @@ fold_spec_time <- read.csv(timesplit_fold_spec) |>
 
 dat <- left_join(dat, fold_spec_LSIO, by = "ruff_id")
 dat <- left_join(dat, fold_spec_time, by = c("recording_id", "window_id"))
-out_dir <- here("outputs", "rf", start_time_string)
+out_dir <- here("outputs", "rf-results", start_time_string)
 if(!dir.exists(out_dir)) 
     dir.create(out_dir, recursive = TRUE)
 
@@ -351,4 +351,4 @@ if(run_timesplit){
 }
 
 message(glue("Analysis Finished. Output saved to {out_dir}\n",
-             "Total runtime: {difftime(Sys.time(), start_time, units = 'mins')}"))
+             "Total runtime: {difftime(Sys.time(), log_start_time, units = 'mins')} mins"))

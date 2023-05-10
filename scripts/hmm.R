@@ -26,22 +26,24 @@
 # ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
 # ---- Start logging ---
 log_start_time <- Sys.time()
+start_time_string <- format(log_start_time, "%Y-%m-%d_%H%M")
 print("------------Loading-----------------")
 
 # ---- Packages ---
 library(here)
 library(dplyr)
-library(data.table)
+library(data.table, include.only = c("fread", "fwrite"))
 library(purrr)
 library(glue)
 library(fitdistrplus, include.only = "fitdist")
 library(doParallel)
 source(here("scripts", "hmm-helpers.R"))
+select <- dplyr::select
 
 # ---- Script inputs ---
-path_windowed_data  <- here("data", "windowed", "windowed_data.csv") 
+path_windowed_data  <- here("data", "windowed", "windowed-data.csv") 
 lsio_fold_spec        <- here("config", "lsio-folds_2022-11-16.csv")
-timesplit_fold_spec <- here("config", "timesplit-folds_2023-01-03_1541.csv")
+timesplit_fold_spec <- here("config", "timesplit-folds_2023-05-09_2007.csv")
 dist_spec_path <-      here("config", "shmm-distributions_2023-01-13.csv")
 
 # Specify "LSIO_fold" or "timesplit_fold" to determine which split method to use
@@ -124,28 +126,28 @@ print(glue("splitting data by: {fold_type}"))
 # Use the appropriate feature set for each CV fold (selected by FCBF)
 if(fold_type == "LSIO_fold"){
     feats <- list(
-        fold1 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR2_XYZ', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'sim_AB'),
-        fold2 = c('statY_min', 'statZ_max', 'dynZ_median', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'ratio_VeDBA_pdynZ_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'auc_trap_X', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'sim_AB'),
-        fold3 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'auc_trap_X', 'AR4_Z', 'pwr_F25_Y', 'pwr_skew_Z', 'sim_AB'),
-        fold4 = c('accXYZ_min', 'statX_kurtosis', 'statY_median', 'statZ_mean', 'dynZ_median', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR4_Z', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_top1_freq_Y', 'pwr_MPF_Z', 'COR_AC'),
-        fold5 = c('statX_kurtosis', 'statY_min', 'statZ_min', 'dynZ_median', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR4_Z', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_MPF_Z', 'COR_BC', 'sim_AB'),
-        fold6 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'difZ_lag2_mean', 'AR2_Y', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'CSA_prev_BC'),
-        fold7 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'jerkRMS_lag1_skewness', 'sim_AB'),
-        fold8 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_MPF_Z', 'COR_AC', 'CSA_prev_BC'),
+        fold1 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR2_XYZ', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'sim_XY'),
+        fold2 = c('statY_min', 'statZ_max', 'dynZ_median', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'ratio_VeDBA_pdynZ_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'auc_trap_X', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'sim_XY'),
+        fold3 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'auc_trap_X', 'AR4_Z', 'pwr_F25_Y', 'pwr_skew_Z', 'sim_XY'),
+        fold4 = c('accXYZ_min', 'statX_kurtosis', 'statY_median', 'statZ_mean', 'dynZ_median', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR4_Z', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_top1_freq_Y', 'pwr_MPF_Z', 'COR_XZ'),
+        fold5 = c('statX_kurtosis', 'statY_min', 'statZ_min', 'dynZ_median', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR4_Z', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_MPF_Z', 'COR_YZ', 'sim_XY'),
+        fold6 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'difZ_lag2_mean', 'AR2_Y', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'CSA_prev_YZ'),
+        fold7 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'jerkRMS_lag1_skewness', 'sim_XY'),
+        fold8 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_MPF_Z', 'COR_XZ', 'CSA_prev_YZ'),
         fold9 = c('accZ_median', 'accZ_max', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'ratio_VeDBA_pdynX_median', 'ratio_VeDBA_pdynZ_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR4_X', 'auc_trap_X', 'AR2_Y', 'AR2_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z'),
-        fold10 = c('accZ_median', 'accZ_max', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR2_Y', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_MPF_Z', 'COR_AC'))
+        fold10 = c('accZ_median', 'accZ_max', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR2_Y', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_MPF_Z', 'COR_XZ'))
 } else if(fold_type == "timesplit_fold"){
     feats = list(
-        fold1 = c('statX_kurtosis', 'statY_min', 'statZ_max', 'dynZ_median', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'ratio_VeDBA_pdynZ_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'CSA_prev_BC'),
-        fold2 = c('statX_kurtosis', 'statY_min', 'statZ_max', 'dynZ_median', 'ratio_VeDBA_pdynX_median', 'ratio_VeDBA_pdynZ_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_BC'),
-        fold3 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR2_XYZ', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'CSA_prev_BC'),
+        fold1 = c('statX_kurtosis', 'statY_min', 'statZ_max', 'dynZ_median', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'ratio_VeDBA_pdynZ_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'CSA_prev_YZ'),
+        fold2 = c('statX_kurtosis', 'statY_min', 'statZ_max', 'dynZ_median', 'ratio_VeDBA_pdynX_median', 'ratio_VeDBA_pdynZ_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_YZ'),
+        fold3 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'dynZ_skewness', 'pdynX_mean', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'AR2_XYZ', 'AR4_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'CSA_prev_YZ'),
         fold4 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'ratio_VeDBA_pdynY_mean', 'ratio_VeDBA_pdynY_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean'),
-        fold5 = c('statX_kurtosis', 'statY_min', 'statY_kurtosis', 'statZ_max', 'dynZ_median', 'ratio_VeDBA_pdynY_median', 'difX_lag1_sd', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'sim_AB'),
-        fold6 = c('accZ_median', 'accZ_max', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR2_Y', 'AR2_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'CSA_prev_BC'),
-        fold7 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_mean', 'ratio_VeDBA_pdynY_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_BC'),
-        fold8 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_BC'),
-        fold9 = c('accZ_median', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR2_Y', 'AR3_Z', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_F75_Z', 'CSA_prev_BC'),
-        fold10 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'CSA_prev_BC'),
+        fold5 = c('statX_kurtosis', 'statY_min', 'statY_kurtosis', 'statZ_max', 'dynZ_median', 'ratio_VeDBA_pdynY_median', 'difX_lag1_sd', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'sim_XY'),
+        fold6 = c('accZ_median', 'accZ_max', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'statY_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR2_Y', 'AR2_XYZ', 'pwr_MPF_X', 'pwr_top1_freq_Z', 'CSA_prev_YZ'),
+        fold7 = c('accZ_median', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_mean', 'ratio_VeDBA_pdynY_min', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR3_X', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_YZ'),
+        fold8 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'smVeDBA_mean', 'CSA_prev_YZ'),
+        fold9 = c('accZ_median', 'accZ_skewness', 'statX_kurtosis', 'statY_min', 'pdynX_kurtosis', 'ratio_VeDBA_pdynY_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'auc_trap_X', 'AR2_Y', 'AR3_Z', 'AR2_XYZ', 'pwr_top1_freq_X', 'pwr_F75_Z', 'CSA_prev_YZ'),
+        fold10 = c('accZ_median', 'accZ_max', 'statX_kurtosis', 'statY_min', 'dynZ_skewness', 'pdynX_mean', 'pdynX_kurtosis', 'ratio_VeDBA_pdynX_median', 'difX_lag1_skewness', 'difZ_lag1_skewness', 'AR2_Y', 'pwr_F25_Y', 'pwr_top1_freq_Z', 'pwr_F75_Z', 'CSA_prev_YZ'),
     )
 }
 
@@ -244,11 +246,11 @@ outputs <- foreach(fold = 1:10, .packages = c('dplyr','purrr','glue')) %dopar% {
     #' on each segment separately. Then predictions from each segment are 
     #' aggregated to represent the full validation fold.
 
-    # Results holder
-    preds <- list()
+    # Results holder  for this fold
+    results <- list()
     
     # Iterate over segments
-    for (seg in unique(traindat$segment_id)){
+    for (seg in unique(valdat$segment_id)){
         # Load the segment
         segdat <- valdat |> filter(segment_id == seg)
         
@@ -295,20 +297,24 @@ outputs <- foreach(fold = 1:10, .packages = c('dplyr','purrr','glue')) %dopar% {
                              gamma = tmat_norm,
                              allprobs = probs,
                              delta = initial_probs)
+        
+        # Collate predictions and truth for this segment
         pred_df <- data.frame(pred = preds, outcome = as.character(preds)) |> 
             tibble() |>
             left_join(beh_labels) |> 
-            select(-outcome) |>
+            # select(-outcome) |>
             rename(pred_behlab = behlab,
                    pred_beh = majority_behaviour)
-        truth_df <- segdat |> select(recording_id, window_id,  beh_event_id, window_start, 
-                                     outcome, behlab, majority_behaviour) |>
+        truth_df <- segdat |> 
+            select(recording_id, window_id,  beh_event_id, window_start,
+                   outcome, behlab, majority_behaviour) |>
             rename(truth = outcome, truth_behlab = behlab, truth_beh = majority_behaviour)
         
-        
-        preds[[seg]] <- cbind(truth_df, pred_df)
+        # Store this segments results
+        results[[seg]] <- cbind(truth_df, pred_df)
     }
-    return(bind_rows(eval_dfs))
+    # Combine results from all segments
+    return(bind_rows(results))
 }
 stopCluster(cl)
 registerDoSEQ()
@@ -316,18 +322,18 @@ registerDoSEQ()
 # ---- Save results ----
 print("------------Saving results-----------------")
 
-out_dir <- here("outputs", "hmm-results")
+out_dir <- here("outputs", "hmm-results", start_time_string)
 
 # Save results
 if(!dir.exists(out_dir)) 
     dir.create(out_dir, recursive = TRUE)
 for(i in 1:length(outputs)){
-    path <- here("outputs", "hmm-results", glue("fold{i}.csv"))
+    path <- file.path(out_dir, glue("fold{i}.csv"))
     fwrite(outputs[[i]], path)
 }
 
 print("------------Analysis Complete-----------------")
-print(glue("Total Time: {difftime(Sys.time(), start_time, units = 'mins') |> round(2)} mins"))
+print(glue("Total Time: {difftime(Sys.time(), log_start_time, units = 'mins') |> round(2)} mins"))
 
 
 # # Quick probe of results
