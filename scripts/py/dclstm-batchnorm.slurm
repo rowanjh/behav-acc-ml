@@ -6,7 +6,7 @@
 #SBATCH -G rtx5000:1		 # number of GPUs
 #SBATCH -t 14:00:00              # time allocation
 #SBATCH --mem 16G                 # total memory
-#SBATCH -o out-dcLSTM-batchnorm-notrans
+#SBATCH -o out-dcLSTM-batchnorm
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=rjacques@orn.mpg.de

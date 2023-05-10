@@ -10,7 +10,7 @@
 #'      
 #'
 #' Notes:
-#'      Recommended installation with conda
+#'      Instructions: installation with conda recommended
 #'      1. Create new conda environment with required packages:
 #'              conda create -n dclstm python=3.10 pytorch pytorch-cuda=11.7 pandas scikit-learn matplotlib -c pytorch -c nvidia
 #'      2. Activate environment:
