@@ -1,0 +1,1057 @@
+---
+title: "Model evaluation: Precision, recall, F1-scores and correlations"
+author: Anne Aulsebrook
+output: 
+  rmdformats::robobook:
+    toc_depth: 2
+    code_folding: hide
+---
+
+*Purpose*: This notebook is used to generate estimates of model performance, including precision, recall and F1-scores. The following steps are included:
+
+* Calculate metrics for each class through 10-fold cross-validation
+* Calculate macro-averaged metrics through 10-fold cross-validation
+* Fit best models to test set (where applicable)
+* Calculate class metrics and macro-averaged metrics for test set (where applicable)
+* Save summaries of metrics
+
+*Notes*: The notebook is designed to be run separately for 1) all original classes, and 2) reduced classes. For reduced classes, mating behaviours are combined into a single class, as are rest and vigilance. Please note that some parts of this script are tailored specifically for particular model outputs, comparisons and naming conventions, and would need to be modified for other studies. 
+
+*Date created*: May 9 2023
+
+# Set up workspace
+
+In the first code chunk, set "behaviours" to either "all" (to get metrics using all original classes) or "reduced" (to get metrics using reduced classes).
+
+```{r Evaluation settings}
+behaviours <- "all"
+
+if(behaviours=="reduced") {
+    output_suffix <- "reduced-classes"
+}
+
+if(behaviours=="all") {
+    output_suffix <- "original-classes"
+}
+```
+
+```{r R settings}
+options(digits=3)
+```
+
+```{r Load packages, echo=FALSE, results=FALSE}
+library(dplyr)
+library(data.table) # for fread
+library(purrr) # for map_df
+library(glue) # for joining values
+library(tidyr)
+library(stringr)
+library(tidymodels) # for fitting rf to test set
+library(randomForest) # for fitting rf to test set
+library(colino) # for fitting rf to test set
+library(FCBF)
+library(themis)
+library(flextable)
+library(here) # used for mapping location of files
+```
+
+```{r Set general paths}
+path_windowed_data <- here("data","windowed","windowed-data.csv")
+path_rf_models <- here("outputs","rf-results","2023-05-09_2019")
+path_nn_models <- here("outputs", "nn-results")
+path_hmm_models <- here("outputs", "hmm-results", "2023-05-11_1452")
+
+path_lsio_folds <- here("config", "lsio-folds.csv")
+path_timesplit_folds <- here("config", "timesplit-folds.csv")
+path_randsplit_folds <- here(path_rf_models, "randstrat_fold_assignments.csv")
+
+output_dir <- here("outputs","eval")
+```
+
+```{r Set flextable defaults}
+set_flextable_defaults(
+  theme_fun = theme_apa,
+  font.size=10,
+  padding = 0.25,
+  font.color = "black",
+  font.family = "Calibri",
+  big.mark = "",
+  digits = 3,
+  na_str = "NA"
+)
+```
+
+```{r Create functions for calculating metrics}
+count_true_positives <- function(df, truth, estimate) {
+    result <- df %>%
+        group_by(.data[[truth]]) %>%
+        summarise(true_pos = sum(.data[[truth]]==.data[[estimate]])) %>%
+        rename(behaviour=.data[[truth]]) %>%
+        replace(is.na(.), 0)
+    return(result)
+}
+
+count_false_positives <- function(df, truth, estimate) {
+    result <- df %>%
+        group_by(.data[[estimate]]) %>%
+        summarise(false_pos=sum(.data[[estimate]]!=.data[[truth]])) %>%
+        rename(behaviour=.data[[estimate]]) %>%
+        replace(is.na(.), 0)
+    return(result)
+}
+
+count_false_negatives <- function(df, truth, estimate) {
+    result <- df %>%
+        group_by(.data[[truth]]) %>%
+        summarise(false_neg=sum(.data[[truth]]!=.data[[estimate]])) %>%
+        rename(behaviour=.data[[truth]]) %>%
+        replace(is.na(.), 0)
+    return(result)
+}
+
+calc_precision <- function(true_pos, false_pos) {
+    precision <- true_pos/(true_pos+false_pos)
+    return(precision)
+}
+
+calc_recall <- function(true_pos, false_neg){
+    recall <- true_pos/(true_pos+false_neg)
+    return(recall)
+}
+
+calc_fmeas <- function(precision, recall) {
+    f_meas <- if_else(precision==0 | recall==0, 0,
+                      2*(precision*recall)/(precision+recall)
+    )
+}
+```
+
+```{r Create functions for summarising metrics}
+calc_class_metrics <- function(df, truth, estimate) {
+    true_pos <- count_true_positives(df, truth, estimate)
+    false_pos <- count_false_positives(df, truth, estimate)
+    false_neg <- count_false_negatives(df, truth, estimate)
+    class_metrics <- full_join(true_pos, false_pos, by='behaviour') %>%
+        full_join(., false_neg, by='behaviour') %>%
+        replace(is.na(.), 0) %>%
+        mutate(true_neg=nrow(df)-(true_pos+false_pos+false_neg),
+               n=nrow(df),
+               precision=calc_precision(true_pos,false_pos),
+               recall=calc_recall(true_pos,false_neg),
+               f_meas=calc_fmeas(precision,recall))
+    return(class_metrics)
+}
+
+calc_macro_metrics <- function(class_metrics,target_behaviours=NA,
+                               group_folds=TRUE, n_predictions="grouped") {
+    # calculates macro-averaged metrics across classes
+    # class_metrics is df with true_pos, false_pos, true_neg and false_neg for each behaviour
+    # group_folds = TRUE: metrics calculated for each unique fold in column 'fold'
+    # group_folds = FALSE: metrics calculated across whole dataframe
+    # if n_predictions = grouped, get count for each fold to calculate n_predictions
+    # if n_predictions = ungrouped, n for class metrics is same in all rows (can use any without grouping)
+    if(!is.na(target_behaviours)[1]) {
+        class_metrics <- class_metrics %>%
+            filter(behaviour %in% target_behaviours)
+    }
+    if(group_folds==TRUE) {
+        macro_metrics <- class_metrics %>%
+            group_by(fold) %>%
+            summarise(n_predictions=first(n),
+                      true_pos=sum(true_pos, na.rm=T),
+                      precision=mean(precision, na.rm=T),
+                      recall=mean(recall, na.rm=T),
+                      f_meas=mean(f_meas, na.rm=T),
+                      accuracy=true_pos/n_predictions)
+    }
+    if(group_folds==FALSE) {
+        if(n_predictions=="grouped") {
+            fold_summary <- class_metrics %>% group_by(fold) %>% summarise(n=n())
+            n_predictions <- sum(fold_summary$n)
+        }
+        if(n_predictions=="ungrouped") {
+            n_predictions <- first(class_metrics$n)
+        }
+        macro_metrics <- class_metrics %>%
+            summarise(true_pos=sum(true_pos, na.rm=T),
+                      precision=mean(precision, na.rm=T),
+                      recall=mean(recall, na.rm=T),
+                      f_meas=mean(f_meas, na.rm=T),
+                      accuracy=true_pos/n_predictions)
+    }
+    return(macro_metrics)
+}
+
+average_macro_metrics <- function(macro_metrics, multimodel=FALSE){
+    # calculates average metrics across folds
+    # if there are multiple models in the dataframe, calculates for each
+    # renames columns for easier merging with non-averaged test metrics
+    if(multimodel==FALSE){
+    summary <- macro_metrics %>%
+        summarise(precision_mean=mean(precision, na.rm=TRUE),
+                  recall_mean=mean(recall, na.rm=TRUE),
+                  f_meas_mean=mean(f_meas, na.rm=TRUE),
+                  accuracy_mean=mean(accuracy, na.rm=TRUE),
+                  precision_sd=sd(precision,na.rm=TRUE),
+                  recall_sd=sd(recall,na.rm=TRUE),
+                  f_meas_sd=sd(f_meas,na.rm=TRUE),
+                  accuracy_sd=sd(accuracy, na.rm=TRUE)) %>%
+        rename(precision=precision_mean, # this is to make combinations easier later
+               recall=recall_mean,
+               f_meas=f_meas_mean,
+               accuracy=accuracy_mean)
+    }
+    if(multimodel==TRUE){
+    summary <- macro_metrics %>%
+        group_by(model) %>%
+        summarise(precision_mean=mean(precision, na.rm=TRUE),
+                  recall_mean=mean(recall, na.rm=TRUE),
+                  f_meas_mean=mean(f_meas, na.rm=TRUE),
+                  accuracy_mean=mean(accuracy, na.rm=TRUE),
+                  precision_sd=sd(precision,na.rm=TRUE),
+                  recall_sd=sd(recall,na.rm=TRUE),
+                  f_meas_sd=sd(f_meas,na.rm=TRUE),
+                  accuracy_sd=sd(accuracy, na.rm=TRUE)) %>%
+        rename(precision=precision_mean,
+               recall=recall_mean,
+               f_meas=f_meas_mean,
+               accuracy=accuracy_mean)
+    }
+    return(summary)
+}
+
+average_class_metrics <- function(class_metrics){
+    # calculates average metrics for each behaviour across folds
+    summary <- class_metrics %>%
+        group_by(behaviour) %>%
+        summarise(precision_mean=mean(precision, na.rm=TRUE),
+                  recall_mean=mean(recall, na.rm=TRUE),
+                  f_meas_mean=mean(f_meas,na.rm=TRUE),
+                  precision_sd=sd(precision,na.rm=TRUE),
+                  recall_sd=sd(recall,na.rm=TRUE),
+                  f_meas_sd=sd(f_meas,na.rm=TRUE)) %>%
+        rename(precision=precision_mean, 
+               recall=recall_mean,
+               f_meas=f_meas_mean)
+    return(summary)
+}
+```
+
+```{r Create functions for mapping metrics for different models and folds}
+map_class_metrics <- function(predictions, by_var, truth, pred) {
+    # summarise class metrics for each fold
+    # by_var is column that identifies each model and fold (or other splitting variable)
+    fold_class_metrics <- map(split(predictions, by=by_var),
+                             ~calc_class_metrics(.x, truth, pred)) %>%
+        bind_rows(.id = by_var)
+    setDT(fold_class_metrics)
+    return(fold_class_metrics)
+}
+
+map_macro_metrics <- function(class_metrics, 
+                              behaviour_list_all, behaviour_list_mating,
+                              multimodel=TRUE, cv=TRUE) {
+    # calculate macro-averaged metrics (averaged across behaviours)
+    # if there are multiple models, calculate for each model separately
+    # for cross-validation, calculate metrics for each fold first, then take the average
+    
+    if(multimodel==FALSE & cv==FALSE){
+        macro_allbeh <- calc_macro_metrics(class_metrics, 
+                                           behaviour_list_all,
+                                           group_folds = FALSE,
+                                           n_predictions = "ungrouped")
+        macro_matingbeh <- calc_macro_metrics(class_metrics, 
+                                              behaviour_list_mating,
+                                              group_folds = FALSE,
+                                              n_predictions = "ungrouped") %>%
+            rename_with(~paste0(.x, "_mat"), true_pos:accuracy)
+    
+        macro_matingbeh$accuracy_mat <- NULL
+    
+        macro_metrics <- cbind(macro_allbeh, macro_matingbeh)
+        return(macro_metrics)
+    }
+    
+    if(multimodel==TRUE & cv==TRUE){
+    # get average macro metrics for all/mating behaviours across folds
+    # requires model_fold column (with fold number in each row after _Fold)
+        macro_allbeh <- map(split(class_metrics, by="model_fold"),
+                        ~calc_macro_metrics(.x, behaviour_list_all)) %>%
+            bind_rows(.id = "model_fold") %>%
+            mutate(model=as.factor(sub("_Fold.*", "", model_fold))) %>%
+            average_macro_metrics(., multimodel=TRUE)
+    
+        macro_matingbeh <- map(split(class_metrics, by="model_fold"),
+                     ~calc_macro_metrics(.x, behaviour_list_mating)) %>%
+            bind_rows(.id = "model_fold") %>%
+            mutate(model=as.factor(sub("_Fold.*", "", model_fold))) %>%
+            average_macro_metrics(., multimodel=TRUE) %>%
+            rename_with(~paste0(.x, "_mat"), precision:accuracy_sd)
+    
+        macro_matingbeh$accuracy_mat <- NULL
+        macro_matingbeh$accuracy_sd_mat <- NULL
+    
+        macro_metrics <- full_join(macro_allbeh, macro_matingbeh, by='model')
+        return(macro_metrics)
+    }
+    
+    if(multimodel==TRUE & cv==FALSE){
+        macro_allbeh <- map(split(class_metrics, by="model"),
+                            ~calc_macro_metrics(.x, behaviour_list_all,
+                                                group_folds=FALSE,
+                                                n_predictions="ungrouped")) %>%
+            bind_rows(.id = "model")
+        
+        macro_matingbeh <- map(split(class_metrics, by="model"),
+                            ~calc_macro_metrics(.x, behaviour_list_mating,
+                                                group_folds=FALSE,
+                                                n_predictions="ungrouped")) %>%
+            bind_rows(.id = "model") %>%
+            rename_with(~paste0(.x, "_mat"), precision:accuracy)
+    
+        macro_matingbeh$accuracy_mat <- NULL
+        
+        macro_metrics <- full_join(macro_allbeh, macro_matingbeh, by='model')
+        return(macro_metrics)
+    }
+    
+    if(multimodel==FALSE & cv==TRUE){
+        macro_allbeh <- map(split(class_metrics, by="fold"),
+                            ~calc_macro_metrics(.x, behaviour_list_all)) %>%
+            bind_rows(.id = "fold")
+        
+        macro_matingbeh <- map(split(class_metrics, by="fold"),
+                            ~calc_macro_metrics(.x, behaviour_list_mating)) %>%
+            bind_rows(.id = "fold") %>%
+            average_macro_metrics(., multimodel=FALSE) %>%
+        rename_with(~paste0(.x, "_mat"), precision:accuracy_sd)
+        
+        macro_matingbeh$accuracy_mat <- NULL
+        macro_matingbeh$accuracy_sd_mat <- NULL
+        
+        macro_metrics <- cbind(macro_allbeh, macro_matingbeh)
+        return(macro_metrics)
+    }
+}
+```
+
+```{r Create data import functions}
+import_rf_preds <- function(directory, filepath, filename) {
+    # directory = parent location of all model outputs
+    # filename = name of file that contains model predictions e.g. "predictions.csv"
+    # adds a column 'model' based on the filepath folder
+    # e.g. filepath = "ModelA/collect_predictions", model = "ModelA"
+    dir_filepath <- here(directory, filepath)
+    df <- fread(dir_filepath) %>% 
+        mutate(model_category = sub(paste0("\\/", filename), "", filepath)) %>%
+        rename(truth_beh=majority_behaviour,
+               pred_beh=.pred_class,
+               fold=id)
+    return(df)
+}
+
+import_hmm_preds <- function(directory, filename) {
+    # reads in a csv file from a specified directory
+    # adds a column 'fold' from the filename (minus .csv)
+    df <- fread(here(directory, filename)) %>% 
+        mutate(fold = substr(filename,1,nchar(filename)-4))
+    return(df)
+}
+
+import_nn_preds <- function(directory, filepath, filename) {
+    # directory = parent location of all model outputs
+    # filename = name of file that contains model predictions e.g. "predictions.csv"
+    # filepath = name of folder that contains predictions e.g. "ModelA/predictions.csv"
+    # filepath is used to identify which predictions are from which model
+    # adds a column 'model' based on the filepath folder
+    # e.g. filepath = "ModelA/collect_predictions", model = "ModelA"
+    df <- fread(here(directory, filepath))
+    colnames(df) <- c('segment_id','window_start_time', 'pred_beh_num','truth_beh_num','pred_beh','truth_beh')
+    df <- df %>%
+        mutate(fold=sub(paste0("\\/",filename), "", filepath))
+    return(df)
+}
+```
+
+```{r Create function for reformatting and reducing behaviour classes}
+if(behaviours=="reduced") {
+    reduce_beh <- function(beh) {
+    new_beh <- case_when(beh=="aggressive posturing" ~ "courtship/territorial",
+                         beh=="dynamic squatting" ~ "courtship/territorial",
+                         beh=="static squatting" ~ "courtship/territorial",
+                         beh=="copulation attempt" ~ "courtship/territorial",
+                         beh=="mounting male" ~ "courtship/territorial",
+                         beh=="vigilance" ~ "rest/vigilance", 
+                         beh=="resting" ~ "rest/vigilance",
+                         beh=="being mounted" ~ "courtship/territorial",
+                         TRUE ~ beh)
+    return(new_beh)
+    }
+}
+```
+
+# Hidden Markov models
+
+```{r Import hmm predictions}
+hmm_predictions <- list.files(path_hmm_models, pattern=".csv") %>%
+    map_df(.,
+           ~import_hmm_preds(directory=path_hmm_models,
+           filename=.x))
+
+hmm_predictions <- hmm_predictions %>%
+    rename(model_fold=fold) %>% 
+    mutate(model_fold=str_replace(model_fold, "fold", "Fold"),
+           validation_type=case_when(model_fold=="test" ~ "test",
+                                     TRUE ~ "CV"),
+           fold=sub(".*_", "", model_fold))
+
+hmm_cv_predictions <- hmm_predictions %>% filter(fold!="test")
+hmm_test_predictions <- hmm_predictions %>% filter(fold=="test")
+
+rm(hmm_predictions)
+```
+
+```{r Reduce hmm behaviours}
+if(behaviours=="reduced") {
+    hmm_cv_predictions$original_truth <- hmm_cv_predictions$truth_beh
+    hmm_cv_predictions$original_pred <- hmm_cv_predictions$pred_beh
+    hmm_cv_predictions$truth_beh <- reduce_beh(hmm_cv_predictions$original_truth)
+    hmm_cv_predictions$pred_beh <- reduce_beh(hmm_cv_predictions$original_pred)
+}
+
+if(behaviours=="reduced") {
+    hmm_test_predictions$original_truth <- hmm_test_predictions$truth_beh
+    hmm_test_predictions$original_pred <- hmm_test_predictions$pred_beh
+    hmm_test_predictions$truth_beh <- reduce_beh(hmm_test_predictions$original_truth)
+    hmm_test_predictions$pred_beh <- reduce_beh(hmm_test_predictions$original_pred)
+}
+```
+
+```{r Save hmm predictions}
+write.csv(hmm_cv_predictions, 
+          here(output_dir, glue("HMM_CV_predictions_{output_suffix}.csv")),
+          row.names=FALSE)
+
+write.csv(hmm_test_predictions, 
+          here(output_dir, glue("HMM_test_predictions_{output_suffix}.csv")),
+          row.names=FALSE)
+```
+
+```{r Set target behaviours to evaluate}
+if(behaviours=="all"){
+    all_behaviours <- unique(hmm_cv_predictions$truth_beh)
+    all_behaviours <- subset(all_behaviours, all_behaviours!="other")
+    mating_behaviours <- c("aggressive posturing",
+                           "being mounted",
+                           "copulation attempt",
+                           "dynamic squatting",
+                           "mounting male",
+                           "static squatting")
+}
+
+if(behaviours=="reduced"){
+    all_behaviours <- unique(hmm_cv_predictions$truth_beh)
+    all_behaviours <- subset(all_behaviours, all_behaviours!="other")
+    mating_behaviours <- c("courtship/territorial")
+}
+```
+
+```{r Calculate hmm cv metrics}
+hmm_fold_class_metrics <- map_class_metrics(hmm_cv_predictions,
+                                                 by_var="model_fold",
+                                                 truth='truth_beh',
+                                                 pred='pred_beh') %>%
+    mutate(fold=sub(".*Fold", "", model_fold),
+           model=sub("_Fold.*", "", model_fold))
+
+hmm_cv_macro <- map_macro_metrics(hmm_fold_class_metrics,
+                                       all_behaviours,
+                                       mating_behaviours,
+                                       multimodel=TRUE) %>%
+    mutate(validation_type="CV",
+           split_type=model)
+```
+
+```{r Calculate hmm test metrics}
+hmm_test_class <- calc_class_metrics(hmm_test_predictions,
+                                     'truth_beh',
+                                     'pred_beh') %>%
+    mutate(validation_type="test",
+           model="timesplit",
+           split_type="timesplit")
+
+hmm_test_macro <- map_macro_metrics(hmm_test_class,
+                                          all_behaviours,
+                                          mating_behaviours,
+                                          multimodel=FALSE,
+                                          cv=FALSE) %>%
+    mutate(validation_type="test",
+           model="timestrat",
+           split_type="timestrat")
+                                     
+hmm_macro_top <- cbind(model_type="HMM",
+                       full_join(hmm_cv_macro, hmm_test_macro))
+
+hmm_macro_top %>% flextable()
+```
+
+```{r Summarise hmm class metrics}
+hmm_cv_class <- map(split(hmm_fold_class_metrics, by="model"),
+                    ~average_class_metrics(.x)) %>%
+    bind_rows(.id = "model") %>%
+    mutate(validation_type="CV",
+           split_type=model)
+
+hmm_class_top <- cbind(model_type="HMM",
+                       full_join(hmm_cv_class, hmm_test_class))
+
+hmm_class_top %>% flextable()
+```
+
+# Random forests
+
+```{r Set RF directory parameters}
+prediction_filename <- "collect_predictions.csv" # name of prediction files
+```
+
+```{r Import RF predictions}
+rf_predictions <- list.files(path=path_rf_models,
+                            pattern = prediction_filename,
+                            recursive = TRUE) %>%
+    map_df(., ~import_rf_preds(directory=path_rf_models, 
+                               filepath=.x,
+                               filename=prediction_filename))
+
+rf_predictions$model <- paste0(rf_predictions$model_category,
+                               "_mtry", rf_predictions$mtry,
+                               "_minn", rf_predictions$min_n)
+
+rf_predictions$model_fold <- factor(paste0(rf_predictions$model,
+                                             "_", rf_predictions$fold))
+```
+
+```{r Check number of samples and folds}
+fold_check <- rf_predictions %>% 
+    group_by(model) %>% 
+    summarise(n=n(),
+              n_folds=n_distinct(fold))
+```
+
+## Extract cross-validation metrics
+
+```{r Reduce rf behaviours}
+if(behaviours=="reduced") {
+    rf_predictions$original_truth <- rf_predictions$truth_beh
+    rf_predictions$original_pred <- rf_predictions$pred_beh
+    rf_predictions$truth_beh <- reduce_beh(rf_predictions$original_truth)
+    rf_predictions$pred_beh <- reduce_beh(rf_predictions$original_pred)
+}
+```
+
+For the purpose of this study, we were particularly interested in model performance for mating behaviours. In addition to looking at metrics across all behaviours, we therefore also looked at metrics for mating behaviours (our "target" behaviours).
+
+```{r Calculate rf class metrics}
+rf_fold_class_metrics <- map_class_metrics(rf_predictions,
+                                                by='model_fold',
+                                                truth='truth_beh',
+                                                pred='pred_beh')
+
+rf_fold_class_metrics$model <- sub("_Fold.*", "", rf_fold_class_metrics$model_fold)
+rf_fold_class_metrics$fold <- sub(".*Fold", "", rf_fold_class_metrics$model_fold)
+```
+
+```{r Calculate rf macro metrics}
+rf_cv_macro <- map_macro_metrics(rf_fold_class_metrics,
+                                 behaviour_list_all = all_behaviours,
+                                 behaviour_list_mating = mating_behaviours)
+
+rf_cv_macro <- rf_cv_macro %>%
+    mutate(split_type=case_when(grepl("LSIO", model) ~ "LSIO",
+                                grepl("strat", model) ~ "randstrat",
+                                grepl("timesplit", model) ~ "timestrat"),
+           transitions_in_test=case_when(grepl("ToutAll", model) ~ "no",
+                                         grepl("Tout", model) ~ "yes",
+                                         grepl("Tin", model) ~ "yes"))
+
+rf_cv_macro$model_folder <- sub("\\_mtry.*", "", rf_cv_macro$model)
+rf_cv_macro$min_n <- sub(".*minn", "", rf_cv_macro$model)
+rf_cv_macro$mtry <- str_match(rf_cv_macro$model, "mtry\\s*(.*?)\\s*_")[,2]
+```
+
+## Select top models
+
+Here, the 'best' model is defined as the model with the best F1 score for mating behaviours (mat_f_meas).
+
+```{r Select best rf LSIO with transitions}
+best_LSIO_t <- rf_cv_macro %>%
+    filter(split_type=="LSIO" & transitions_in_test=="yes") %>%
+    arrange(desc(f_meas_mat)) %>%
+    head(1)
+
+rf_cv_macro %>%
+    filter(split_type=="LSIO" & transitions_in_test=="yes") %>%
+    arrange(desc(f_meas_mat)) %>%
+    select(model, f_meas, precision, recall, 
+           f_meas_mat, precision_mat, recall_mat, f_meas_sd_mat) %>%
+    flextable() %>%
+    colformat_double(digits=3)
+```
+
+```{r Select best rf LSIO without transitions}
+best_LSIO_nt <- rf_cv_macro %>%
+    filter(split_type=="LSIO" & transitions_in_test=="no") %>%
+    arrange(desc(f_meas_mat)) %>%
+    head(1)
+
+rf_cv_macro %>%
+    filter(split_type=="LSIO" & transitions_in_test=="no") %>%
+    arrange(desc(f_meas_mat)) %>%
+    select(model, f_meas, precision, recall, 
+           f_meas_mat, precision_mat, recall_mat, f_meas_sd_mat) %>%
+    flextable() %>%
+    colformat_double(digits=3)
+```
+
+```{r Select best rf timestrat with transitions}
+best_tstrat_t <- rf_cv_macro %>%
+    filter(split_type=="timestrat" & transitions_in_test=="yes") %>%
+    arrange(desc(f_meas_mat)) %>%
+    head(1)
+
+rf_cv_macro %>%
+    filter(split_type=="timestrat" & transitions_in_test=="yes") %>%
+    arrange(desc(f_meas_mat)) %>%
+    select(model, f_meas, precision, recall, 
+           f_meas_mat, precision_mat, recall_mat, f_meas_sd_mat) %>%
+    flextable() %>%
+    colformat_double(digits=3)
+```
+
+```{r Select best rf time strat without transitions}
+best_tstrat_nt <- rf_cv_macro %>%
+    filter(split_type=="timestrat" & transitions_in_test=="no") %>%
+    arrange(desc(f_meas_mat)) %>%
+    head(1)
+
+rf_cv_macro %>%
+    filter(split_type=="timestrat" & transitions_in_test=="no") %>%
+    arrange(desc(f_meas_mat)) %>%
+    select(model, f_meas, precision, recall, 
+           f_meas_mat, precision_mat, recall_mat, f_meas_sd_mat) %>%
+    flextable() %>%
+    colformat_double(digits=3)
+```
+
+```{r Select best rf rand strat with transitions}
+best_rstrat_t <- rf_cv_macro %>%
+    filter(split_type=="randstrat" & transitions_in_test=="yes") %>%
+    arrange(desc(f_meas_mat)) %>%
+    head(1)
+
+rf_cv_macro %>%
+    filter(split_type=="randstrat" & transitions_in_test=="yes") %>%
+    arrange(desc(f_meas_mat)) %>%
+    select(model, f_meas, precision, recall, recall_sd, 
+           f_meas_mat, precision_mat, recall_mat, f_meas_sd_mat) %>%
+    flextable() %>%
+    colformat_double(digits=3)
+```
+
+```{r Select best rf rand strat without transitions}
+best_rstrat_nt <- rf_cv_macro %>%
+    filter(split_type=="randstrat" & transitions_in_test=="no") %>%
+    arrange(desc(f_meas_mat)) %>%
+    head(1)
+
+rf_cv_macro %>%
+    filter(split_type=="randstrat" & transitions_in_test=="no") %>%
+    arrange(desc(f_meas_mat)) %>%
+    select(model, f_meas, precision, recall, recall_sd, 
+           f_meas_mat, precision_mat, recall_mat, recall_sd_mat) %>%
+    flextable() %>%
+    colformat_double(digits=3)
+```
+
+```{r Save all CV macro metrics}
+write.csv(rf_cv_macro, 
+          here(output_dir, glue("RF_all-CV-macro-metrics_{output_suffix}.csv")),
+          row.names=FALSE)
+```
+
+```{r Combine top CV macro metrics}
+rf_cv_macro_top <- 
+    rf_cv_macro %>%
+    filter(model==best_LSIO_nt$model | model==best_LSIO_t$model |
+               model==best_rstrat_nt$model | model==best_rstrat_t$model |
+               model==best_tstrat_nt$model | model==best_tstrat_t$model) %>%
+    mutate(validation_type="CV")
+```
+
+```{r Save predictions for best models}
+rf_cv_predictions_top <-
+    rf_predictions %>%
+    filter(model==best_LSIO_nt$model | model==best_LSIO_t$model |
+               model==best_rstrat_nt$model | model==best_rstrat_t$model |
+               model==best_tstrat_nt$model | model==best_tstrat_t$model)
+
+write.csv(rf_cv_predictions_top, 
+          here(output_dir, paste0("RF_best-CV-predictions_", output_suffix, ".csv")),
+          row.names=FALSE)
+```
+
+## Fit models to test set
+
+```{r Prepare full dataset and splits}
+# Get data and fold information
+dat <- fread(path_windowed_data, data.table = FALSE)
+timestrat_folds <- fread(path_timesplit_folds, data.table=FALSE)
+rstrat_folds <- fread(path_randsplit_folds, data.table=FALSE)
+
+# Subset to required variables
+dat <- dat %>% select(-matches("^beh_"))
+
+# Add additional columns (these need to present, even if not used)
+dat$split_var <- NA
+dat$LSIO_fold <- NA
+dat$timesplit_fold <- NA
+
+# Add ID column for identifying data for training/testing
+timestrat_folds <- timestrat_folds %>%
+    mutate(recording_window = paste0(recording_id, "-", window_id))
+rstrat_folds <- rstrat_folds %>%
+    mutate(recording_window = paste0(recording_id, "-", window_id))
+
+dat <- dat %>%
+    mutate(recording_window = paste0(recording_id, "-", window_id))
+
+# Separate training and test data (with transitions)
+tstrat_t_test_list <- timestrat_folds %>% filter(fold=="test")
+tstrat_t_test_dat <- dat %>% filter(recording_window %in% tstrat_t_test_list$recording_window)
+tstrat_t_train_dat <- dat %>% filter(!(recording_window %in% tstrat_t_test_list$recording_window))
+
+rstrat_t_test_list <- rstrat_folds %>% filter(fold=="test")
+rstrat_t_test_dat <- dat %>% filter(recording_window %in% rstrat_t_test_list$recording_window)
+rstrat_t_train_dat <- dat %>% filter(!(recording_window %in% rstrat_t_test_list$recording_window))
+
+# Create train and test data without transitions
+tstrat_nt_train_dat <- tstrat_t_train_dat %>% filter(transition==FALSE)
+rstrat_nt_train_dat <- rstrat_t_train_dat %>% filter(transition==FALSE)
+
+tstrat_nt_test_dat <- tstrat_t_test_dat %>% filter(transition==FALSE)
+rstrat_nt_test_dat <- rstrat_t_test_dat %>% filter(transition==FALSE)
+
+rm(tstrat_t_test_list, rstrat_t_test_list)
+```
+
+```{r Import model fitting functions}
+source(here("scripts", "r", "rf-helpers.R"))
+```
+
+```{r Create helper functions for fitting best rf model}
+get_wf <- function(wf_path, wf_object_name) {
+    load(glue("{wf_path}/{wf_object_name}"))
+    return(wf)
+}
+
+specify_rf_model <- function(mtry_val, min_n_val) {
+    model <- rand_forest(mtry = as.numeric(!!mtry_val), 
+                         min_n = as.numeric(!!min_n_val), trees = 1000) %>%
+        set_mode("classification") %>%
+        set_engine("randomForest")
+    return(model)
+}
+
+get_test_predictions <- function(model_fit, test_data) {
+    predictions <- predict(model_fit, test_data)
+    labelled_predictions <- cbind(test_data, predictions) %>%
+        rename(truth_beh=majority_behaviour,
+               pred_beh=.pred_class)
+    return(labelled_predictions)
+}
+```
+
+```{r Specify and fit best timeSTRAT model with transitions}
+best_tstrat_t_wf <- get_wf(here(path_rf_models, 
+                                best_tstrat_t$model_folder),
+                                "workflow_obj.RData")
+
+best_tstrat_t_model <- specify_rf_model(mtry=best_tstrat_t$mtry,
+                                        min_n=best_tstrat_t$min_n)
+
+best_tstrat_t_wf <- best_tstrat_t_wf %>% update_model(best_tstrat_t_model)
+
+best_tstrat_t_fit <- best_tstrat_t_wf %>% fit(tstrat_t_train_dat)
+
+best_tstrat_t_testpreds <- get_test_predictions(best_tstrat_t_fit, test_data = tstrat_t_test_dat)
+
+best_tstrat_t_testpreds <- best_tstrat_t_testpreds %>%
+    mutate(model=best_tstrat_t$model)
+```
+
+```{r Specify and fit best timeSTRAT model without transitions}
+best_tstrat_nt_wf <- get_wf(here(path_rf_models, 
+                            best_tstrat_nt$model_folder),
+                            "workflow_obj.RData")
+
+best_tstrat_nt_model <- specify_rf_model(mtry=best_tstrat_nt$mtry,
+                                         min_n=best_tstrat_nt$min_n)
+
+best_tstrat_nt_wf <- best_tstrat_nt_wf %>% update_model(best_tstrat_nt_model)
+
+best_tstrat_nt_fit <- best_tstrat_nt_wf %>% fit(tstrat_nt_train_dat)
+
+best_tstrat_nt_testpreds <- get_test_predictions(best_tstrat_nt_fit, test_data = tstrat_nt_test_dat)
+
+best_tstrat_nt_testpreds <- best_tstrat_nt_testpreds %>%
+    mutate(model=best_tstrat_nt$model)
+```
+
+```{r Specify and fit best randSTRAT model with transitions}
+best_rstrat_t_wf <- get_wf(here(path_rf_models, 
+                            best_rstrat_t$model_folder),
+                            "workflow_obj.RData")
+
+best_rstrat_t_model <- specify_rf_model(mtry=best_rstrat_t$mtry,
+                                        min_n=best_rstrat_t$min_n)
+
+best_rstrat_t_wf <- best_rstrat_t_wf %>% update_model(best_rstrat_t_model)
+
+best_rstrat_t_fit <- best_rstrat_t_wf %>% fit(rstrat_t_train_dat)
+
+best_rstrat_t_testpreds <- get_test_predictions(best_rstrat_t_fit, test_data = rstrat_t_test_dat)
+
+best_rstrat_t_testpreds <- best_rstrat_t_testpreds %>%
+    mutate(model=best_rstrat_t$model)
+```
+
+```{r Specify and fit best randSTRAT model without transitions}
+best_rstrat_nt_wf <- get_wf(here(path_rf_models, 
+                            best_rstrat_nt$model_folder),
+                            "workflow_obj.RData")
+
+best_rstrat_nt_model <- specify_rf_model(mtry=best_rstrat_nt$mtry,
+                                        min_n=best_rstrat_nt$min_n)
+
+best_rstrat_nt_wf <- best_rstrat_nt_wf %>% update_model(best_rstrat_nt_model)
+
+best_rstrat_nt_fit <- best_rstrat_nt_wf %>% fit(rstrat_nt_train_dat)
+
+best_rstrat_nt_testpreds <- get_test_predictions(best_rstrat_nt_fit, test_data = rstrat_nt_test_dat)
+
+best_rstrat_nt_testpreds <- best_rstrat_nt_testpreds %>%
+    mutate(model=best_rstrat_nt$model)
+```
+
+```{r Combine test predictions}
+rf_test_predictions <- rbind(best_tstrat_nt_testpreds, 
+                             best_tstrat_t_testpreds,
+                             best_rstrat_nt_testpreds,
+                             best_rstrat_t_testpreds)
+
+rf_test_predictions <- rf_test_predictions %>%
+    select(!accX_mean:timesplit_fold)
+```
+
+```{r Save test predictions}
+write.csv(rf_test_predictions, 
+          file=here(output_dir, glue("best_RF_test-predictions_{output_suffix}.csv")),
+          row.names=FALSE)
+```
+
+## Summarise metrics for top models
+
+```{r Reduce rf test prediction classes}
+if(behaviours=="reduced") {
+    rf_test_predictions$original_truth <- rf_test_predictions$truth_beh
+    rf_test_predictions$original_pred <- rf_test_predictions$pred_beh
+    rf_test_predictions$truth_beh <- reduce_beh(as.character(rf_test_predictions$original_truth))
+    rf_test_predictions$pred_beh <- reduce_beh(as.character(rf_test_predictions$original_pred))
+}
+```
+
+```{r Get rf class metrics for test set}
+setDT(rf_test_predictions)
+
+rf_test_class <- 
+    map_class_metrics(rf_test_predictions, "model", "truth_beh", "pred_beh")
+
+rf_test_macro <- 
+    map_macro_metrics(rf_test_class,
+                      all_behaviours,
+                      mating_behaviours,
+                      multimodel=TRUE,
+                      cv=FALSE) %>%
+    mutate(split_type=case_when(grepl("LSIO", model) ~ "LSIO",
+                                grepl("strat", model) ~ "randstrat",
+                                grepl("timesplit", model) ~ "timestrat"),
+           transitions_in_test=case_when(grepl("ToutAll", model) ~ "no",
+                                         grepl("Tout", model) ~ "yes",
+                                         grepl("Tin", model) ~ "yes"),
+           validation_type="test-set")
+```
+
+```{r Summarise all top rf macro metrics}
+rf_macro_top <- cbind(model_type="RF",
+                      full_join(rf_cv_macro_top, rf_test_macro))
+rf_macro_top %>%
+    select(model, split_type, validation_type, transitions_in_test, 
+           precision, recall, f_meas,
+           precision_mat, recall_mat, f_meas_mat) %>%
+    flextable()
+```
+
+```{r Summarise class metrics for top rf models in CV}
+rf_fold_class_top <- 
+    rf_fold_class_metrics %>%
+    filter(model==best_LSIO_nt$model | model==best_LSIO_t$model |
+               model==best_rstrat_nt$model | model==best_rstrat_t$model |
+               model==best_tstrat_nt$model | model==best_tstrat_t$model)
+
+rf_cv_class_top <- map(split(rf_fold_class_top, by="model"),
+                        ~average_class_metrics(.x)) %>%
+    bind_rows(.id = "model") %>%
+    mutate(split_type=case_when(grepl("LSIO", model) ~ "LSIO",
+                                grepl("strat", model) ~ "randstrat",
+                                grepl("timesplit", model) ~ "timestrat"),
+           transitions_in_test=case_when(grepl("ToutAll", model) ~ "no",
+                                         grepl("Tout", model) ~ "yes",
+                                         grepl("Tin", model) ~ "yes"),
+           validation_type="CV")
+
+rf_test_class <- rf_test_class %>%
+    mutate(split_type=case_when(grepl("LSIO", model) ~ "LSIO",
+                                grepl("strat", model) ~ "randstrat",
+                                grepl("timesplit", model) ~ "timestrat"),
+           transitions_in_test=case_when(grepl("ToutAll", model) ~ "no",
+                                         grepl("Tout", model) ~ "yes",
+                                         grepl("Tin", model) ~ "yes"),
+           validation_type="test")
+
+rf_class_top <- cbind(model_type="RF",
+                      full_join(rf_cv_class_top, rf_test_class))
+```
+
+
+# Neural networks (deep learning)
+
+```{r Set nn parameters}
+nn_input_tin_dir <- here(path_nn_models, "2023-05-10_with-transitions")
+nn_input_tout_dir <- here(path_nn_models, "2023-05-10_no-transitions")
+prediction_filename <- "preds_validation.csv"
+```
+
+```{r Import nn predictions}
+nn_predictions_tin <- list.files(path=nn_input_tin_dir,
+                          pattern = prediction_filename,
+                          recursive = TRUE) %>%
+    map_df(., ~import_nn_preds(directory=nn_input_tin_dir,
+                               filepath=.x,
+                               filename=prediction_filename)) %>%
+    mutate(transitions="tin")
+
+nn_predictions_tout <- list.files(path=nn_input_tout_dir,
+                          pattern = prediction_filename,
+                          recursive = TRUE) %>%
+    map_df(., ~import_nn_preds(directory=nn_input_tout_dir, 
+                                  filepath=.x,
+                                  filename=prediction_filename)) %>%
+    mutate(transitions="tout")
+
+nn_predictions <- full_join(nn_predictions_tin, nn_predictions_tout) %>%
+    mutate(fold=str_replace(fold,"fold","Fold"),
+           model=paste0("NN","_",transitions),
+           model_fold=paste0(model,"_",fold))
+
+rm(nn_predictions_tin, nn_predictions_tout)
+```
+
+## Extract cross-validation metrics
+
+```{r Reduce nn behaviours}
+if(behaviours=="reduced") {
+    nn_predictions$original_truth <- nn_predictions$truth_beh
+    nn_predictions$original_pred <- nn_predictions$pred_beh
+    nn_predictions$truth_beh <- reduce_beh(nn_predictions$original_truth)
+    nn_predictions$pred_beh <- reduce_beh(nn_predictions$original_pred)
+}
+```
+
+```{r Calculate nn class metrics}
+nn_fold_class_metrics <- map_class_metrics(nn_predictions,
+                                                by_var="model_fold",
+                                                truth="truth_beh",
+                                                pred="pred_beh")  %>%
+    mutate(fold=sub(".*Fold", "", model_fold, ignore.case=TRUE),
+           model=sub("_Fold.*", "", model_fold, ignore.case=TRUE),
+           split_type=model)
+
+nn_cv_macro <- map_macro_metrics(nn_fold_class_metrics,
+                                      all_behaviours,
+                                      mating_behaviours) %>%
+    mutate(split_type="LSIO")
+
+nn_cv_macro %>%
+    arrange(desc(f_meas_mat)) %>%
+    select(model, f_meas, precision, recall, recall_sd, 
+           f_meas_mat, precision_mat, recall_mat, recall_sd_mat) %>%
+    flextable()
+```
+
+## Select top model
+
+```{r Select top nn model}
+nn_macro_top <- nn_cv_macro %>%
+    arrange(desc(f_meas_mat)) %>%
+    head(1)
+
+nn_macro_top <- cbind(model_type="NN", nn_macro_top)
+```
+
+```{r Save nn predictions}
+nn_predictions_top <- nn_predictions %>%
+    filter(model==nn_macro_top$model)
+
+write.csv(nn_predictions_top, 
+          here(output_dir, glue("NN_CV_predictions_{output_suffix}.csv")),
+          row.names=FALSE)
+```
+
+```{r Summarise nn class metrics}
+nn_class_top <- nn_fold_class_metrics %>%
+    filter(model==nn_macro_top$model) %>%
+    average_class_metrics(.) %>%
+    mutate(model=nn_macro_top$model,
+           split_type="LSIO")
+
+nn_class_top <- cbind(model_type="NN", nn_class_top)
+
+nn_class_top %>% arrange(desc(f_meas)) %>% flextable()
+```
+
+There were insufficient individuals for a hold-out test set when splitting data using LSIO. Since we only used LSIO for the neural networks, there are no further steps required for evaluating the models. 
+
+# Combine metrics for top RF, HMM and NN models
+
+```{r Combine macro metrics}
+macro_overview <- full_join(rf_macro_top,
+                            hmm_macro_top) %>%
+    full_join(., nn_macro_top)
+macro_overview %>% flextable()
+```
+
+```{r Combine class metrics}
+class_overview <- full_join(rf_class_top, hmm_class_top) %>%
+    full_join(., nn_class_top)
+
+class_overview %>% flextable()
+```
+
+```{r Save macro and class metrics}
+write.csv(macro_overview, 
+          here(output_dir, glue("top_macro-metrics_{output_suffix}.csv")),
+          row.names=FALSE)
+
+write.csv(class_overview, 
+          here(output_dir, glue("top_class-metrics_{output_suffix}.csv")),
+          row.names=FALSE)
+```
