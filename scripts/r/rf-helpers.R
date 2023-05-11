@@ -76,16 +76,14 @@ save_cv_output <- function(tunegrid_obj, wf, out_dir, label){
     if (!dir.exists(thisdir))
         dir.create(thisdir, recursive = TRUE)
     
-    # Save text summary of recipe & model
-    capture.output(file = glue("{thisdir}/model_info.txt"),
-    cat("===================================\n"),
-    cat("Recipe\n"),
-    cat("===================================\n"),
-    print(wf$pre$actions$recipe),
-    cat("\n===================================\n"),
-    cat("model\n"),
-    cat("===================================\n"),
-    print(wf$fit$actions$model))
+    # Save quick text summary of recipe & model.
+    capture.output(
+        file = glue("{thisdir}/model_info.txt"),
+        wf,
+        cat("===================================\n"),
+        cat("Variable roles\n"),
+        cat("===================================\n"),
+        print(wf$pre$actions$recipe$recipe$term_info, n = 500))
     
     # save workflow object (contains full on recipe, not just a basic summary)
     save(wf, file = file.path(thisdir, "workflow_obj.RData"))
