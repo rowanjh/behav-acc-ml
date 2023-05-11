@@ -17,6 +17,7 @@
 #'      May 2, 2023
 #'      
 #' Outputs:
+#'      the selected features for each fold are expored to:
 #'      ./config/hmm-fcbf-spec.csv
 
 # ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
@@ -26,6 +27,7 @@ library(colino)
 library(glue)
 library(data.table, include.only = "fread")
 library(purrr)
+library(doParallel)
 source(here("scripts", "r", "hmm-helpers.R"))
 
 # ---- Script inputs ---
@@ -50,74 +52,71 @@ dat <- left_join(dat, fold_spec_LSIO, by = "ruff_id")
 #' not too bad. It would also be possible to adjust the hmm algorithm to 
 #' tolerate variable numbers of features.
 
-#' Run FCBF on a fold
-#' 
-#' @param fold a cross-validation fold (1-10) present in the dat object
-#' @param threshold the threshold for FCBF to apply
-#' @param fold_type 'LSIO_fold' or 'timesplit_fold', should be a column in dat
-#' @return a character vector of selected features
-get_features_per_fold <- function(fold, threshold, fold_type){
-    # Get data for this training fold
+# Specify the threshold for each fold below
+runs <- list(
+    lsio_1 =  list(fold = 1, thresh = 0.00197, split = "LSIO"),
+    lsio_2 =  list(fold = 2, thresh = 0.005,   split = "LSIO"),
+    lsio_3 =  list(fold = 3, thresh = 0.0026,  split = "LSIO"),
+    lsio_4 =  list(fold = 4, thresh = 0.0025,  split = "LSIO"),
+    lsio_5 =  list(fold = 5, thresh = 0.003,   split = "LSIO"),
+    lsio_6 =  list(fold = 6, thresh = 0.002,   split = "LSIO"),
+    lsio_7 =  list(fold = 7, thresh = 0.0015,  split = "LSIO"),
+    lsio_8 =  list(fold = 8, thresh = 0.00265, split = "LSIO"),
+    lsio_9 =  list(fold = 9, thresh = 0.003,   split = "LSIO"),
+    lsio_10 = list(fold = 10, thresh = 0.0045, split = "LSIO"),
+    ts_1 =    list(fold = 1, thresh = 0.0035,  split = "timesplit"),
+    ts_2 =    list(fold = 2, thresh = 0.00275, split = "timesplit"),
+    ts_3 =    list(fold = 3, thresh = 0.0020,  split = "timesplit"),
+    ts_4 =    list(fold = 4, thresh = 0.004,   split = "timesplit"),
+    ts_5 =    list(fold = 5, thresh = 0.0024,  split = "timesplit"),
+    ts_6 =    list(fold = 6, thresh = 0.0026,  split = "timesplit"),
+    ts_7 =    list(fold = 7, thresh = 0.0025,  split = "timesplit"),
+    ts_8 =    list(fold = 8, thresh = 0.0028,  split = "timesplit"),
+    ts_9 =    list(fold = 9, thresh = 0.0028,  split = "timesplit"),
+    ts_10 =   list(fold = 10, thresh = 0.0030, split = "timesplit")
+)
+
+# Run FCBF in parallel over all folds
+cl <- makeCluster(min(parallel::detectCores(), 20))
+registerDoParallel(cl)
+
+outputs <- foreach(i = 1:length(runs), 
+                   .packages = c('dplyr','recipes', 'colino','glue')) %dopar% {
+    # init
+    run <- runs[[i]]
+    splitcol <- paste0(run$split, "_fold")
+    
+    # load training fold for this cross-validation split
     folddat <- dat %>% 
-        filter(.data[[fold_type]] != fold & .data[[fold_type]] != "test") 
+        filter(.data[[splitcol]] != run$fold & .data[[splitcol]] != "test") 
     
-    # Exclude variables with unsavoury distributions
-    folddat <- folddat %>% 
-        select(-matches("roll_"))
-    
+    # setup recipe to do FCBF
     rec <- 
         recipe(majority_behaviour ~ ., data = head(folddat)) %>%
         update_role(recording_id, ruff_id, segment_id, win_in_segment_id, 
                     window_id, loop_j, window_start, window_end, transition, mixed, 
                     LSIO_fold, timesplit_fold, beh_event_id, new_role = "ID") %>%
-        # Morph will be a covariate for sHMM, select different features with FCBF
         update_role(morph, new_role = "ID") %>% 
-        step_select_fcbf(all_predictors(), threshold = threshold)
+        step_select_fcbf(all_predictors(), threshold = run$thresh)
     
     prepped <- prep(rec, folddat)    
     selected_feats <- prepped$steps[[1]]$features_retained$variable
-    print(glue("fold {fold} selected {length(selected_feats)} feats"))
-    return(list(selected_feats))
+    
+    data.frame(feat = selected_feats,
+               split = run$split,
+               fold = run$fold)
 }
-# A bit slow
-features_LSIO <- list(
-    f1 = get_features_per_fold(1, 0.00197, "LSIO_fold"),
-    f2 = get_features_per_fold(2, 0.005, "LSIO_fold"),
-    f3 = get_features_per_fold(3, 0.0026, "LSIO_fold"),
-    f4 = get_features_per_fold(4, 0.0025, "LSIO_fold"),
-    f5 = get_features_per_fold(5, 0.003, "LSIO_fold"),
-    f6 = get_features_per_fold(6, 0.002, "LSIO_fold"),
-    f7 = get_features_per_fold(7, 0.0015, "LSIO_fold"),
-    f8 = get_features_per_fold(8, 0.00265, "LSIO_fold"),
-    f9 = get_features_per_fold(9, 0.003, "LSIO_fold"),
-    f10 = get_features_per_fold(10, 0.0045, "LSIO_fold")
-)
+stopCluster(cl)
+registerDoSEQ()
 
-features_timesplit <- list(
-    f1 = get_features_per_fold(1, 0.0035, "timesplit_fold"),
-    f2 = get_features_per_fold(2, 0.00275, "timesplit_fold"),
-    f3 = get_features_per_fold(3, 0.0020, "timesplit_fold"),
-    f4 = get_features_per_fold(4, 0.004, "timesplit_fold"),
-    f5 = get_features_per_fold(5, 0.0024, "timesplit_fold"),
-    f6 = get_features_per_fold(6, 0.0026, "timesplit_fold"),
-    f7 = get_features_per_fold(7, 0.0025, "timesplit_fold"),
-    f8 = get_features_per_fold(8, 0.0028, "timesplit_fold"),
-    f9 = get_features_per_fold(9, 0.0028, "timesplit_fold"),
-    f10 = get_features_per_fold(10, 0.0030, "timesplit_fold")
-)
+fcbf_selections <- bind_rows(outputs)
 
-LSIO_df <- map_df(features_LSIO, unlist) |> 
-    pivot_longer(everything(), names_to = "fold", values_to = "feature") |>
-    arrange(fold) |> 
-    mutate(split = "LSIO")
-timesplit_df <- map_df(features_timesplit, unlist) |> 
-    pivot_longer(everything(), names_to = "fold", values_to = "feature") |>
-    arrange(fold) |> 
-    mutate(split = "timesplit")
+# Check number of features in each fold
+fcbf_selections |> 
+    group_by(split, fold) |>
+    count()
 
-allfeat_spec <- bind_rows(LSIO_df, timesplit_df) |>
-    mutate(fold = gsub("f", "fold", fold))
 
-write.csv(allfeat_spec, file = here("config", "hmm-fcbf-spec.csv"),
+write.csv(fcbf_selections, file = here("config", "hmm-fcbf-spec.csv"),
           row.names = FALSE)
 
