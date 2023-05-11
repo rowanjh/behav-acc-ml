@@ -5,3 +5,5 @@ cellar/
 lock/
 python/
 staging/
+settings.json
+settings.dcf
