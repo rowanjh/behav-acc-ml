@@ -8,9 +8,8 @@
 #'      This script runs deep learning models. A 1-second sliding window is 
 #'      applied with 50% overlap.
 #'
-#' Notes:
-#'      Instructions: installation with conda recommended
-#'      1. Create new conda environment with required packages:
+#' Instructions: installation with conda recommended
+#'      1. Create conda environment with required packages (see requirements.txt):
 #'              conda create -n dclstm python=3.10 pytorch pytorch-cuda=11.7 pandas scikit-learn matplotlib -c pytorch -c nvidia
 #'      2. Activate environment:
 #'              conda activate dclstm
@@ -19,13 +18,18 @@
 #'      3. Run code:
 #'          python scripts/py/main.py --batchnorm
 #'      
-#'      Modified from Bock et al.'s (2021) original code available here:
-#'      https://github.com/mariusbock/dl-for-har
-#'      The original script had more diverse functionality, such as customising
+#' Notes:
+#'      Recommended running with GPU. If memory allocation errors, then try
+#'      using a smaller batch size (edit parameters.batch_size in this script)
+#'      This code is modified from Bock et al.'s (2021) implementation 
+#'      available at: https://github.com/mariusbock/dl-for-har
+#'
+#'      Bock et al.'s original script has more functionality, such as customising
 #'      all parameters through command line arguments, but this was greatly 
 #'      simplified. Several other changes were made to the pipeline such as 
-#'      implementing windowing prior to cross-validation, and changing log  
-#'      output paths. Some parts of the codebase are unused.
+#'      implementing windowing prior to cross-validation, changing log  
+#'      output paths, and several other minor changes. Some parts of the 
+#'      codebase were retained in this repository but are unused.
 #'      
 #'      Built with python 3.10, but likely works python 3.7+ (not tested)
 #'
