@@ -66,6 +66,13 @@ fold_spec_timesplit <- read.csv(timesplit_fold_spec) |>
 dist_spec <- read.csv(dist_spec_path)
 fcbf_spec <- read.csv(fcbf_spec_path)
 
+if (!all(fcbf_spec$feat %in% dist_spec$feature)){
+    stop(glue("features selected by fcbf but missing from distribution spec: 
+              {fcbf_spec$feat[!fcbf_spec$feat %in% dist_spec$feature] |>
+                    unique() |> paste(collapse = ', ')}"))
+}
+# Check if all features have a dist specified
+dist_spec
 # ---- Prep dataset for HMM algorithm ---
 dat <- dat |> select(-matches("^beh_(?!event)", perl = TRUE))
 dat <- left_join(dat, fold_spec_LSIO, by = "ruff_id")
@@ -300,22 +307,47 @@ for(i in 1:length(outputs)){
 print("------------Analysis Complete-----------------")
 print(glue("Total Time: {difftime(Sys.time(), log_start_time, units = 'mins') |> round(2)} mins"))
 
-
-# # Quick probe of results
-fs_lsio <- list()
-fs_ts <- list()
-for(i in 1:20){
+# Save log
+# Quick probe of results
+fs <- data.frame()
+for(i in 1:length(outputs)){
     thissplit <- outputs[[i]]$split |> unique()
     thisfold <- outputs[[i]]$fold |> unique()
     folddat <- outputs[[i]]
     folddat$pred <- factor(folddat$pred, levels = levels(hmmdat$outcome))
     folddat$truth <- factor(folddat$truth, levels = levels(hmmdat$outcome))
     thisf <- yardstick::f_meas(folddat,pred,truth)$.estimate
-    print(glue("\n{thissplit} {thisfold} f meas: {thisf}"))
-    if(thissplit == "LSIO")
-        fs_lsio[[i]] <- thisf
-    if(thissplit == "timesplit")
-        fs_ts[[i]] <- thisf
+    thisresult <- data.frame(split = thissplit,
+                             fold = thisfold,
+                             f = round(thisf, 2))
+    fs <- rbind(fs, thisresult)
 }
-print(glue("LSIO mean f-score: {fs_lsio |> unlist() |> mean() |> round(2)}"))
-print(glue("timesplit mean f-score: {fs_ts |> unlist() |> mean() |> round(2)}"))
+lsio_cv_f <- fs |> filter(split == "LSIO") |> pull(f) |> mean() |> round(2)
+ts_cv_f <- fs |> filter(split == "timesplit" & fold != "test") |> pull(f) |> mean() |> round(2)
+ts_test_f <- fs |> filter(split == "timesplit" & fold == "test") |> pull(f) |> mean() |> round(2)
+
+capture.output(
+    file = file.path(out_dir, "log.txt"),
+    cat("============= Hmm run log ===================\n"),
+    print(glue("Start time: {log_start_time}")),
+    print(glue("Run Time: {difftime(Sys.time(), log_start_time, units = 'mins') |> round(2)} mins")),
+    cat("\n============= Behaviours ===================\n"),
+    print(glue("behaviour class: {unique(hmmdat$majority_behaviour)}")),
+    print(glue("n classes: {unique(hmmdat$majority_behaviour) |> length()}")),
+    cat("\n============= Overall Results ===================\n"),
+    print(glue("LSIO cross-validation f measure:      {lsio_cv_f}")),
+    print(glue("timesplit cross-validation f measure: {lsio_cv_f}")),
+    print(glue("timesplit testset f measure:          {ts_test_f}")),
+    cat("\n========== Distribution Specification ===============\n"),
+    print(dist_spec),
+    cat("\n======== Feature Selection Specification ==============\n"),
+    print(fcbf_spec)
+)
+
+
+# output a log file: 
+# number of classes
+# Features selected per fold
+# Distributions and transformations for features
+# quick results overview
+# time elapsed
