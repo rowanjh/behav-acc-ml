@@ -2,14 +2,17 @@
 #' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
 #' using accelerometry and machine learning: challenges and opportunities.
 #' 
-#' github.com/...
+#' https://github.com/rowanjh/behav-acc-ml
 #'
 #' Purpose: 
 #'      This is an interactive script to explore the distributions of features
 #'      used in HMMs, in order to select a theoretical probablity distribution 
 #'      that will best represent that feature in the model. Ultimately, a normal 
 #'      or gamma distribution will be selected for each feature. Transformations 
-#'      are considered for some features make the distributions more favourable
+#'      are considered for some features make the distributions more favourable.
+#'      
+#'      A csv file is output giving the distribution and transformations 
+#'      ultimately selected by the researchers
 #' 
 #' Notes:
 #'      Room to improve the efficiency of this process, but it gets the job done
@@ -18,15 +21,27 @@
 #'      May 2, 2023
 #' 
 #' Output:
+#'      Distributions and transformations for each feature are exported to:
 #'      ./config/hmm-distribution-spec.csv
+#'      
 # ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
 
 library(here)
 library(ggplot2)
+library(dplyr)
+library(data.table, include.only = "fread")
 library(fitdistrplus, include.only = "fitdist")
 library(gridExtra)
+library(purrr)
 
-all_feats <- read.csv(here("config", "hmm-fcbf-spec.csv")) |>
+# ---- Script inputs ---
+path_windowed_data <- here("data", "windowed", "windowed-data.csv") 
+path_feature_spec  <- here("config", "hmm-fcbf-spec.csv")
+
+# ---- Load data ---
+dat <- fread(path_windowed_data, data.table = FALSE)
+
+all_feats <- read.csv(path_feature_spec) |>
     pull(feature) |> unique()
 
 # ~~~~~~~~~~~~~~~ Look at distributions for every behaviour ~~~~~~~~~~~~~~~~----
@@ -117,9 +132,10 @@ grid.arrange(grobs = plots[["AR4_X"]])#                     norm
 
 # ---- Transform skewed variables ---
 #' Fitting a theoretical probability distribution can be more difficult when  
-#' variables are skewed or have other unfavourable distributions Explore 
-#' possible transforms that may give data an easier distribution.
-#' Apply a log, exponential, or kurtosis reduction transform
+#' variables are skewed or have other unfavourable distributions. Explore 
+#' possible transforms that may give data an easier distribution. 
+#' Here, we ultimately decided to use a log, exponential, or kurtosis reduction 
+#' transform
 dattrans <- dat %>% 
     # Log transforms
     mutate(across(
@@ -178,6 +194,9 @@ for (feat in all_feats){
     }
 }
 # ---- Select normal or gamma distribution for each variable ---
+#' The distributions of the transformed variables can be compared to the 
+#' original variables to see if they are more favorable
+
 # Exponential transformed varaibles (skew-reduction)
 grid.arrange(grobs = plots[["accZ_median"]]) #           
 grid.arrange(grobs = plots_trans[["accZ_median"]]) #    Use transform,Norm dist
@@ -280,10 +299,13 @@ mean(untrans_norm - trans_gamma)
 mean(trans_norm - trans_gamma)          # normal and gamma dist very similar, use norm.
 
 # ---- Final decisions about distributions and transformations ---
-#' Bit tedious to do this manually, might be helpful to get a second window up.
+#' Here are the distributions and transformations the researchers ultimately 
+#' selected. These are saved as a csv and can then be used by the main hmm 
+#' analysis script. It's a bit tedious to do this manually!
 
-# helper to paste into the list:
-# cat(stringi::stri_pad(all_feats, width = 25, "right"), sep = " = list(dist = "NA", trans = "NA"),\n")
+# # Helper to make template for list:
+# cat(stringi::stri_pad(all_feats, width = 25, "right"), 
+#     sep = " = list(dist = 'XXXX', trans = 'XXXX'),\n")
 
 # Assign distributions and transformations
 dist_list <- list(
