@@ -73,7 +73,7 @@ if(!run_randstrat & !run_LSIO & !run_timesplit){
 
 # ---- Script inputs ---
 path_windowed_data  <- here("data", "windowed", "windowed-data.csv") 
-lsio_fold_spec        <- here("config", "lsio-folds_2022-11-16.csv")
+lsio_fold_spec        <- here("config", "lsio-folds.csv")
 timesplit_fold_spec <- here("config", "timesplit-folds.csv")
 
 # ---- Parameters ---
