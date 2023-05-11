@@ -2,7 +2,7 @@
 #' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
 #' using accelerometry and machine learning: challenges and opportunities.
 #' 
-#' github.com/...
+#' https://github.com/rowanjh/behav-acc-ml
 #'
 #' Purpose: 
 #'      This script implements FCBF feature selection for hidden markov models.

@@ -2,7 +2,7 @@
 #' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
 #' using accelerometry and machine learning: challenges and opportunities.
 #' 
-#' github.com/...
+#' https://github.com/rowanjh/behav-acc-ml
 #'
 #' Purpose: 
 #'      This script implements a sliding window over labelled accelerometer 
@@ -20,6 +20,10 @@
 #'
 #' Date Created: 
 #'      May 2, 2023
+#' 
+#' Outputs:
+#'      The windowed dataset is output to:
+#'      ./data/windowed/windowed-data.csv
 #'      
 # ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
 # ---- Start logging ---

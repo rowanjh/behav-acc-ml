@@ -2,7 +2,7 @@
 #' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
 #' using accelerometry and machine learning: challenges and opportunities.
 #' 
-#' github.com/...
+#' https://github.com/rowanjh/behav-acc-ml
 #'
 #' Purpose: 
 #'      This script runs supervised hidden markov models in cross-validation  
@@ -22,7 +22,9 @@
 #'      May 2, 2023
 #' 
 #' Outputs: 
-#'      ./output/hmm/
+#'      csv files with predictions for each cross-validation fold exported to:
+#'      ./outputs/hmm-results/{datetime}/
+#'      
 # ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
 # ---- Start logging ---
 log_start_time <- Sys.time()

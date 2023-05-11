@@ -2,7 +2,7 @@
 #' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
 #' using accelerometry and machine learning: challenges and opportunities.
 #' 
-#' github.com/...
+#' https://github.com/rowanjh/behav-acc-ml
 #'
 #' Purpose: 
 #'      This script preprocesses raw data, and exports csv files with scaled and 
@@ -12,7 +12,6 @@
 #'      3. Calculate 6-O calibrations factors
 #'      4. Calculate Static bias calibration factors
 #'      5. Label contiguous segments of accelerometer data with behaviour scoring
-#'      
 #'
 #' Notes:
 #'      We extract segments of accelerometer data that have behaviour labels. 
@@ -25,10 +24,26 @@
 #'      Behaviour timings are adjusted for accelerometer drift, so timestamps 
 #'      from behaviours match the accelerometer.
 #'      Behaviour data is then appended to accelerometer data and saved, so output
-#'      consists of files with columns: timestamp; accX; accY; accZ; Behaviour
+#'      consists of files with columns: timestamp; accX; accY; accZ; Behaviour.
+#'      Each intact segment (contiguous, uninterrupted) of labelled accelerometer 
+#'      data is saved in a separate csv file.
 #'
 #' Date created:
 #'      May 2, 2023
+#'      
+#' Outputs:
+#'      >200 csv files with processed accelerometer data segments are exported to
+#'      ./data/clean/data-segments/
+#'      
+#'      Useful information about each data segment exported to
+#'      ./data/clean/segment_summary.csv
+#'
+#'      Useful information about each accelerometer recording exported to 
+#'      ./data/clean/recording_info.csv
+#'      
+#'      Behaviour data with drift-adjusted timestamps appended (mainly used in
+#'      quality assurance scripts) exported to
+#'      ./data/clean/ruff_behaviours_adjusted_for_drift.csv
 #'      
 # ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
 # ---- Start logging ---

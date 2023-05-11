@@ -1,7 +1,7 @@
 # ~~~~~~~~~~~~~~~ Script overview ---------------------------------------
 #' Aulsebrook et al. (2023) Paper Title
 #'
-#' github.com/...
+#' https://github.com/rowanjh/behav-acc-ml
 #' 
 #' Purpose: 
 #'      This script runs a grid of random forest models. All models can be run 
@@ -20,13 +20,14 @@
 #' Date Created: 2022-10-04
 #'
 #' Outputs: 
-#'      ./output/rf/
+#'      Predictions and model metrics for each validation fold are exported to:
+#'      ./outputs/rf-results/{datetime}/
+#'      
 # ~~~~~~~~~~~~~~~ 1. Setup ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
 # ---- Start logging ---
 log_start_time <- Sys.time()
 start_time_string <- format(log_start_time, "%Y-%m-%d_%H%M")
 print(paste0("Starting Random Forests. Start time: ", start_time_string))
-
 
 # ---- Packages ---
 #' Package colino requires FCBF package installed from Bioconductor
@@ -321,7 +322,6 @@ if(run_randstrat){
 # Run LSIO models
 if(run_LSIO){
     message ("Running LSIO models")
-    
     run_CV(wf_sm0_Tin, LSIO_cvfolds, rf_grid, my_metrics, out_dir, "LSIO_sm0_Tin")
     run_CV(wf_sm07_Tin, LSIO_cvfolds, rf_grid, my_metrics, out_dir, "LSIO_sm07_Tin")
     run_CV(wf_sm5_Tin, LSIO_cvfolds, rf_grid, my_metrics, out_dir, "LSIO_sm5_Tin")
