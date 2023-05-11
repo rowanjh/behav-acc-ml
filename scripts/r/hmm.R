@@ -44,7 +44,7 @@ select <- dplyr::select
 
 # ---- Script inputs ---
 path_windowed_data  <- here("data", "windowed", "windowed-data.csv") 
-lsio_fold_spec        <- here("config", "lsio-folds_2022-11-16.csv")
+lsio_fold_spec        <- here("config", "lsio-folds.csv")
 timesplit_fold_spec <- here("config", "timesplit-folds.csv")
 dist_spec_path <-      here("config", "hmm-distribution-spec.csv")
 fcbf_spec_path <-      here("config", "hmm-fcbf-spec.csv")
@@ -108,38 +108,29 @@ all_preds <- list()
 print(glue("Number of classes: {nclasses}"))
 
 # ---- Run cross-validation ---
-# Run all 20 folds in parallel, 20 cores optimal
-runs <- expand.grid(fold = 1:10, split = c("LSIO", "timesplit"))
+# Run all 20 cross-validation folds and the test fold in parallel, 21 cores optimal
+runs <- expand.grid(fold = 1:10, split = c("LSIO", "timesplit")) |>
+    rbind(list(fold="test", split="timesplit"))
 
-cl <- makeCluster(min(parallel::detectCores(), 20))
+cl <- makeCluster(min(parallel::detectCores(), 21))
 registerDoParallel(cl)
 
 outputs <- foreach(i = 1:nrow(runs), .packages = c('dplyr','purrr','glue')) %dopar% {
     run <- runs[i,]
-    fold <- run$fold
-    foldtxt <- paste0("fold",fold)
+    thisfold <- run$fold
     split_type <- as.character(run$split)
     fold_column <- paste0(split_type, "_fold")
-    print(glue("run: {split_type} fold {fold}"))
+    print(glue("run: {split_type} fold {thisfold}"))
+    
     # Specify training and validation data for this fold
     traindat <- hmmdat |> 
-        filter(.data[[fold_column]] != fold & .data[[fold_column]] != "test") |> 
+        filter(.data[[fold_column]] != thisfold & .data[[fold_column]] != "test") |> 
         group_by(segment_id) |>
         filter(n() > 1) |> ungroup()
     valdat <- hmmdat |> 
-        filter(.data[[fold_column]] == fold) |>
+        filter(.data[[fold_column]] == thisfold) |>
         group_by(segment_id) |>
         filter(n() > 1) |> ungroup()
-    
-    # # To fit on the test set
-    # traindat <- hmmdat |> 
-    #     filter(.data[[fold_column]] != "test") |> 
-    #     group_by(segment_id) |>
-    #     filter(n() > 1) |> ungroup()
-    # valdat <- hmmdat |> 
-    #     filter(.data[[fold_column]] == "test") |>
-    #     group_by(segment_id) |>
-    #     filter(n() > 1) |> ungroup()
     
     # ---- Initial probability matrix ----
     #' Initial probability distribution is simply estimated from the proportion 
@@ -161,9 +152,9 @@ outputs <- foreach(i = 1:nrow(runs), .packages = c('dplyr','purrr','glue')) %dop
     em_dists <- list() 
     
     feats <- fcbf_spec |> 
-        filter(fold == foldtxt) |>
+        filter(fold == thisfold) |>
         filter(split %in% split_type) |> 
-        pull(feature)
+        pull(feat)
     fold_dists <- data.frame(feature = feats) |> left_join(dist_spec)
     # Loop over classes
     for(j in 1:length(classes)){
@@ -283,7 +274,8 @@ outputs <- foreach(i = 1:nrow(runs), .packages = c('dplyr','purrr','glue')) %dop
     }
     # Combine results from all segments
     out <- bind_rows(results)
-    out$fold <- foldtxt
+    out$fold <- thisfold 
+    if (thisfold != "test") out$fold <- paste0("fold", out$fold)
     out$split <- split_type
     return(out)
 }

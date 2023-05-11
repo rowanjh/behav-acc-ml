@@ -8,7 +8,9 @@
 #'      This script implements FCBF feature selection for hidden markov models.
 #'      FCBF is run on folds with variable thresholds so that 15 features are 
 #'      selected. Having an equal number features per fold simplifies the HMM 
-#'      implementation, but 
+#'      implementation, but is more tedious for FCBF which doesn't currently 
+#'      support a specification for the number of features to select, so
+#'      different thresholds need to be attempted.
 #' 
 #' Notes:
 #'      Room to improve the efficiency of this process, but it gets the job done
@@ -33,7 +35,7 @@ source(here("scripts", "r", "hmm-helpers.R"))
 # ---- Script inputs ---
 path_windowed_data    <- here("data", "windowed", "windowed-data.csv") 
 timesplit_fold_spec   <- here("config", "timesplit-folds.csv")
-LSIO_fold_spec        <- here("config", "lsio-folds_2022-11-16.csv")
+LSIO_fold_spec        <- here("config", "lsio-folds.csv")
 
 # ---- Prep data ---
 dat <- fread(path_windowed_data, data.table = FALSE)
@@ -73,11 +75,12 @@ runs <- list(
     ts_7 =    list(fold = 7, thresh = 0.0025,  split = "timesplit"),
     ts_8 =    list(fold = 8, thresh = 0.0028,  split = "timesplit"),
     ts_9 =    list(fold = 9, thresh = 0.0028,  split = "timesplit"),
-    ts_10 =   list(fold = 10, thresh = 0.0030, split = "timesplit")
+    ts_10 =   list(fold = 10, thresh = 0.0030, split = "timesplit"),
+    ts_test = list(fold = "test", thresh = 0.0030, split = "timesplit")
 )
 
 # Run FCBF in parallel over all folds
-cl <- makeCluster(min(parallel::detectCores(), 20))
+cl <- makeCluster(min(parallel::detectCores(), 21))
 registerDoParallel(cl)
 
 outputs <- foreach(i = 1:length(runs), 
@@ -88,8 +91,13 @@ outputs <- foreach(i = 1:length(runs),
     
     # load training fold for this cross-validation split
     folddat <- dat %>% 
-        filter(.data[[splitcol]] != run$fold & .data[[splitcol]] != "test") 
+        filter(.data[[splitcol]] != run$fold) 
     
+    # Exclude test set data (unless this is the test fold)
+    if (run$fold != "test"){
+        folddat <- folddat %>% 
+            filter(.data[[splitcol]] != "test") 
+    }
     # setup recipe to do FCBF
     rec <- 
         recipe(majority_behaviour ~ ., data = head(folddat)) %>%
@@ -104,7 +112,7 @@ outputs <- foreach(i = 1:length(runs),
     
     data.frame(feat = selected_feats,
                split = run$split,
-               fold = run$fold)
+               fold = as.character(run$fold))
 }
 stopCluster(cl)
 registerDoSEQ()
