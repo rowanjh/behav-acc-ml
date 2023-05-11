@@ -49,6 +49,9 @@ dat <- dat |> select(-matches("^beh_(?!event)", perl = TRUE))
 dat <- left_join(dat, fold_spec_timesplit, by = c("recording_id", "window_id"))
 dat <- left_join(dat, fold_spec_LSIO, by = "ruff_id")
 
+# Exclude some features with a distribution that was found to be untennable
+dat <- dat |> select(-roll_min, -roll_max, -roll_mean, -roll_median)
+
 # ~~~~~~~~~~~~~~~ Run FCBF on each fold ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
 #' Get 15 features for each fold by tweaking the threshold. A bit tedious, but 
 #' not too bad. It would also be possible to adjust the hmm algorithm to 
@@ -123,7 +126,6 @@ fcbf_selections <- bind_rows(outputs)
 fcbf_selections |> 
     group_by(split, fold) |>
     count()
-
 
 write.csv(fcbf_selections, file = here("config", "hmm-fcbf-spec.csv"),
           row.names = FALSE)

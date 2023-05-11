@@ -42,7 +42,7 @@ path_feature_spec  <- here("config", "hmm-fcbf-spec.csv")
 dat <- fread(path_windowed_data, data.table = FALSE)
 
 all_feats <- read.csv(path_feature_spec) |>
-    pull(feature) |> unique()
+    pull(feat) |> unique()
 
 # ~~~~~~~~~~~~~~~ Look at distributions for every behaviour ~~~~~~~~~~~~~~~~----
 #' Distribution should be examined at separately for each behaviour, because
@@ -129,6 +129,9 @@ grid.arrange(grobs = plots[["jerkRMS_lag1_skewness"]])#     norm
 grid.arrange(grobs = plots[["COR_XZ"]])#                    norm
 
 grid.arrange(grobs = plots[["AR4_X"]])#                     norm
+grid.arrange(grobs = plots[["roll_min"]])#                  awful distribution
+grid.arrange(grobs = plots[["statY_max"]])#                 high kurtosis
+grid.arrange(grobs = plots[["roll_sd"]])#                   pos skew
 
 # ---- Transform skewed variables ---
 #' Fitting a theoretical probability distribution can be more difficult when  
@@ -160,11 +163,13 @@ dattrans <- dat %>%
                   ratio_VeDBA_pdynY_mean,
                   smVeDBA_mean,
                   pwr_top1_freq_Z,
-                  difX_lag1_sd), 
+                  difX_lag1_sd,
+                  roll_sd), 
         .fns = function(x) log(x+1))) %>%
     # de-kurtosis transform
     mutate(across(
-        .cols = c(difZ_lag2_mean, CSA_prev_YZ, accZ_skewness, dynZ_median),
+        .cols = c(difZ_lag2_mean, CSA_prev_YZ, accZ_skewness, 
+                  dynZ_median,statY_max),
         .fns = function(x) sqrt(abs(x-mean(x)) + 0.001)
     )) %>%
     # exp transform
@@ -254,6 +259,9 @@ grid.arrange(grobs = plots_trans[["ratio_VeDBA_pdynY_median"]])# Use transform, 
 grid.arrange(grobs = plots[["accZ_max"]])#                  
 grid.arrange(grobs = plots_trans[["accZ_max"]])#   Use transform,  normal
 
+grid.arrange(grobs = plots[["roll_sd"]])#                  
+grid.arrange(grobs = plots_trans[["roll_sd"]])#   Use transform,  gamma
+
 # Kurtosis-reduced (sqrt(abs()))
 grid.arrange(grobs = plots[["statY_kurtosis"]])#            
 grid.arrange(grobs = plots_trans[["statY_kurtosis"]])# Use transform, Gamma
@@ -278,6 +286,9 @@ grid.arrange(grobs = plots_trans[["smVeDBA_mean"]])# Use transform,  Gamma
 
 grid.arrange(grobs = plots[["difX_lag1_sd"]])#            
 grid.arrange(grobs = plots_trans[["difX_lag1_sd"]])# Use transform,  Gamma
+
+grid.arrange(grobs = plots[["statY_max"]])#                 
+grid.arrange(grobs = plots_trans[["statY_max"]])# Use transform,  Gamma
 
 # Check: statZ_mean: log or untransformed 
 grid.arrange(grobs = plots[["statZ_mean"]])#           
@@ -354,7 +365,9 @@ dist_list <- list(
     COR_YZ                    = list(dist = "norm", trans = "none"),
     jerkRMS_lag1_skewness     = list(dist = "norm", trans = "none"),
     COR_XZ                    = list(dist = "norm", trans = "none"),
-    AR4_X                     = list(dist = "norm", trans = "none")
+    AR4_X                     = list(dist = "norm", trans = "none"),
+    statY_max                 = list(dist = "gamma", trans = "kurt"),
+    roll_sd                   = list(dist = "gamma", trans = "log")
 )
 
 dists <- data.frame(feature = names(dist_list), 
