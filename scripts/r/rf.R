@@ -12,7 +12,7 @@
 #'          Rscript scripts/rf-runCV.R              (runs all models)
 #'          Rscript scripts/rf-runCV.R - lsio       (only runs LSIO models)
 #' 
-#'      By default this script runs all models. Accepted args include:
+#'      By default this script runs all models. Accepted command-line args include:
 #'          -lsio (only runs LSIO models)
 #'          -timestrat (only runs timestrat models)
 #'          -randstrat (only runs random-stratified models) 
@@ -73,7 +73,7 @@ if(!run_randstrat & !run_LSIO & !run_timesplit){
 # ---- Script inputs ---
 path_windowed_data  <- here("data", "windowed", "windowed-data.csv") 
 lsio_fold_spec        <- here("config", "lsio-folds_2022-11-16.csv")
-timesplit_fold_spec <- here("config", "timesplit-folds_2023-05-09_2007.csv")
+timesplit_fold_spec <- here("config", "timesplit-folds.csv")
 
 # ---- Parameters ---
 n_CPU_cores <- min(10, parallel::detectCores())
@@ -311,6 +311,7 @@ if(run_randstrat){
     run_CV(wf_sm07_Tout, strat_cvfolds, rf_grid, my_metrics, out_dir, "strat_sm07_Tout")
     run_CV(wf_sm5_Tout, strat_cvfolds, rf_grid, my_metrics, out_dir, "strat_sm5_Tout")
     run_CV(wf_sm10_Tout, strat_cvfolds, rf_grid, my_metrics, out_dir, "strat_sm10_Tout")
+    # Transitions are pre-filtered from dataset, so the Tout recipe is not needed
     run_CV(wf_sm0_Tin, strat_cvfolds_notrans, rf_grid, my_metrics, out_dir, "strat_sm0_ToutAll")
     run_CV(wf_sm07_Tin, strat_cvfolds_notrans, rf_grid, my_metrics, out_dir, "strat_sm07_ToutAll")
     run_CV(wf_sm5_Tin, strat_cvfolds_notrans, rf_grid, my_metrics, out_dir, "strat_sm5_ToutAll")
@@ -329,6 +330,7 @@ if(run_LSIO){
     run_CV(wf_sm07_Tout, LSIO_cvfolds, rf_grid, my_metrics, out_dir, "LSIO_sm07_Tout")
     run_CV(wf_sm5_Tout, LSIO_cvfolds, rf_grid, my_metrics, out_dir, "LSIO_sm5_Tout")
     run_CV(wf_sm10_Tout, LSIO_cvfolds, rf_grid, my_metrics, out_dir, "LSIO_sm10_Tout")
+    # Transitions are pre-filtered from dataset, so the Tout recipe is not needed
     run_CV(wf_sm0_Tin, LSIO_cvfolds_notrans, rf_grid, my_metrics, out_dir, "LSIO_sm0_ToutAll")
     run_CV(wf_sm07_Tin, LSIO_cvfolds_notrans, rf_grid, my_metrics, out_dir, "LSIO_sm07_ToutAll")
     run_CV(wf_sm5_Tin, LSIO_cvfolds_notrans, rf_grid, my_metrics, out_dir, "LSIO_sm5_ToutAll")
@@ -345,6 +347,7 @@ if(run_timesplit){
     run_CV(wf_sm07_Tout, timesplit_cvfolds, rf_grid, my_metrics, out_dir, "timesplit_sm07_Tout")
     run_CV(wf_sm5_Tout, timesplit_cvfolds, rf_grid, my_metrics, out_dir, "timesplit_sm5_Tout")
     run_CV(wf_sm10_Tout, timesplit_cvfolds, rf_grid, my_metrics, out_dir, "timesplit_sm10_Tout")
+    # Transitions are pre-filtered from dataset, so the Tout recipe is not needed
     run_CV(wf_sm0_Tin, timesplit_cvfolds_notrans, rf_grid, my_metrics, out_dir, "timesplit_sm0_ToutAll")
     run_CV(wf_sm07_Tin, timesplit_cvfolds_notrans, rf_grid, my_metrics, out_dir, "timesplit_sm07_ToutAll")
     run_CV(wf_sm5_Tin, timesplit_cvfolds_notrans, rf_grid, my_metrics, out_dir, "timesplit_sm5_ToutAll")

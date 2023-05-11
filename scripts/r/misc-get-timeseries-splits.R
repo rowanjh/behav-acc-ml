@@ -1,6 +1,6 @@
 # This script creates a stratified split of the data, but instead of randomly
 # allocating windows to each fold, the split will be based on time. Nearby
-# behaviours are not as independent, and are kept together, to reduce data leakage
+# behaviours are not as independent and are kept together, to reduce data leakage
 library(here)
 library(data.table, include.only = c("fread", "fwrite"))
 library(dplyr)
@@ -136,6 +136,5 @@ max(x$pct_deviance)
 dat_with_fold <- dat_with_fold %>%
     mutate(fold = if_else(is.na(fold), "test", fold))
 # Save fold assignment
-dt <- strftime(Sys.time(), format = "%Y-%m-%d_%H%M")
 fwrite(dat_with_fold %>% select(recording_id, window_id, fold), 
-          file = here("config", glue("timesplit-folds_{dt}.csv")))
+          file = here("config", glue("timesplit-folds.csv")))
