@@ -114,7 +114,7 @@ print(paste0("Saving drift plots to: ", here("outputs", "drift-plots")))
 # Estimate clock error for every accelerometer recording
 deploy_notes$clock_error_1 <- NA
 deploy_notes$clock_error_3 <- NA
-
+    
 for (i in 1:nrow(deploy_notes)){
     note <- deploy_notes[i,]
     
