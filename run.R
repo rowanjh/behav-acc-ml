@@ -17,7 +17,9 @@
 #'
 #' Notes: 
 #'      Package management with Renv. Install all required R packages by running
-#'      renv::restore() 
+#'      renv::restore().
+#'      
+#'      Scripts anonymized for peer review.
 #'      
 #' Date created:
 #'      May 2, 2023
@@ -27,15 +29,14 @@ library(here)
 library(rmarkdown)
 
 ## ---- Download data ----
-download.file("https://zenodo...", here("data", "raw", "ruff-data-db.zip"))
-download.file("https://zenodo...", here("data", "raw", "ruff-data-other.zip"))
-
-unzip(here("data","raw","ruff-data-db.zip"), here("data","raw"))
-unzip(here("data","raw","ruff-data-misc.zip"), here("data","raw"))
+# Download raw data zip into ./data/raw/ directory, and extract.
+# unzip(here("data","raw","data-raw.zip"), exdir = here("data","raw"))
 
 ## ---- Clean data ----
 
 source(here("scripts", "r", "cleaning.R"))
+
+# (Optional) quality-assurance notebook
 render(here("scripts", "r", "cleaning-qa.Rmd"), 
        output_dir = here("outputs", "qa"),
        output_file = "cleaning-qa.html")
@@ -43,6 +44,8 @@ render(here("scripts", "r", "cleaning-qa.Rmd"),
 ## ---- Window data ----
 
 source(here("scripts", "r", "windowing.R"))
+
+# (Optional) quality-assurance notebook
 render(here("scripts", "r", "windowing-qa.Rmd"), 
        output_dir = here("outputs", "qa"),
        output_file = "windowing-qa.html")
@@ -63,7 +66,8 @@ source(here("scripts", "r", "hmm-fcbf.R"))
 #' Each selected feature in the HMM model needs to be estimated using an 
 #' appropriate theoretical probability distribution. This script was used to 
 #' explore possible distributions and transformations, and the decisions
-#' exported to csv.
+#' exported to csv. It is designed for interactive work for visualisations 
+#' rather than being  sourced()
 source(here("scripts", "r", "hmm-specify-distributions.R"))
 
 # Run HMMs

@@ -374,7 +374,7 @@ segment_summary <- segment_summary |>
 # Load each behaviour individually, then stick them together
 segment_dir <- here("data", "clean", "data-segments")
 if(!dir.exists(segment_dir))
-    dir.create(segment_dir)
+    dir.create(segment_dir, recursive = TRUE)
 
 cl <- makePSOCKcluster(n_CPU_cores) 
 registerDoParallel(cl)

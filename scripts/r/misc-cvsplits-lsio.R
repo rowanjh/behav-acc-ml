@@ -85,4 +85,7 @@ left_join(dat, lsio_df, by = "ruff_id") |>
     select(fold, majority_behaviour) |>
     table()
     
+if (!dir.exists(here("config")))
+    dir.create(here("config"))
+
 write.csv(lsio_df, file = here("config", "lsio-folds.csv"), row.names = FALSE)

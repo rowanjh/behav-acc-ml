@@ -19,8 +19,8 @@ This analysis uses accelerometry data and machine learning techniques to classif
 
 ------------------------------------------------------------------------
 
-1.  Copy repository with `git clone https://github.com/rowanjh/behav-acc-ml.git`, or download a zip.
-2.  Open project
+1.  Download scripts.zip, extract project
+2.  Download data-raw.zip into directory './data/raw', extract
 3.  Open script `run.R`. This script gives the overview of all analyses and is the starting point.
 
 ## Notes
@@ -32,6 +32,8 @@ This project uses renv for R package management. Any clone of this project will,
 To run neural networks we recommend a setting up a conda environment and using a GPU (see `/scripts/r/py/main.py` for all instructions).
 
 Some parts of the analysis use parallel loops and can have high memory requirements. Use fewer parallel workers to reduce the memory footprint.
+
+Raw accelerometer data are stored in a large sqlite database (~81GB unzipped), ensure sufficient disk space is available. The database is interfaced and processed through R functions, and intermediate cleaned csv files are produced.
 
 ## Project Structure
 

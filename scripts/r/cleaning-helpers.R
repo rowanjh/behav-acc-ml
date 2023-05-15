@@ -238,7 +238,7 @@ get_clock_error <- function(recording_id, calib_time, plot = TRUE) {
     
     # Check input
     if(is.na(calib_time)){
-        stop(glue("Missing/bad calibration time for {filename}"))
+        stop(glue("Missing/bad calibration time for {recording_id}"))
     }
     
     # Fetch data for the target accelerometer recording at the calibration time

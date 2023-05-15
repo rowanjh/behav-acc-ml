@@ -83,8 +83,6 @@ fft_max_freq <- 25 # Max frequency to use for FFT, in Hz. (max = nsamples/2)
 # Loop over every available segment of scored accelerometer data
 cl <- makePSOCKcluster(n_CPU_cores) 
 registerDoParallel(cl)
-print(paste0("Starting main loop: ", prtime(log_start_time)))
-
 results <- foreach(i = 1:nrow(segment_summary), .packages = packages, 
                    .inorder = FALSE) %dopar% {
     this_rec_id <- segment_summary$recording_id[i]
@@ -280,9 +278,12 @@ all_windows <- all_windows %>%
 all_windows <- all_windows %>% filter(majority_behaviour != "beh_unknown")
 
 out_path <- here("data", "windowed", "windowed-data.csv")
+if (!dir.exists(here("data", "windowed")))
+    dir.create(here("data", "windowed"))
 
 print(paste0("Data windowing finished. Duration: ", 
              round(difftime(Sys.time(), log_start_time, units = 'mins'), 1), 
              " minutes."))
 print(paste(out_path))
+
 fwrite(all_windows, out_path)
