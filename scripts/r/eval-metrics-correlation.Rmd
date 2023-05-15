@@ -1,0 +1,353 @@
+---
+title: 'Model evaluation: Correlation coefficients'
+author: Anne Aulsebrook
+output: 
+  rmdformats::robobook:
+    toc_depth: 2
+    code_folding: hide
+---
+
+*Purpose*: This notebook is used to assess the correlation between the true and predicted time that individuals spent on a behaviour. For each of the 'best' models (assessed in "eval-generate-performance-metrics.Rmd"), we calculated the Spearman’s rank correlation coefficient for each behaviour. 
+
+The following steps are included:
+
+* Import predictions from each of the 'best' models (assessed in "eval-generate-performance-metrics.Rmd")
+* Match predictions with bird identity
+* Subset to focal birds
+* Calculate Spearman's correlation coefficient
+* Save counts and coefficients
+
+*Date created*: May 10 2023
+
+```{r Load packages}
+library(dplyr)
+library(data.table) # for fread
+library(purrr) # for map_df
+library(flextable)
+library(tidyr) # for replace_na
+library(here)
+```
+
+```{r Set flextable defaults}
+set_flextable_defaults(
+  theme_fun = theme_apa,
+  font.size=10,
+  padding = 0.25,
+  font.color = "black",
+  font.family = "Calibri"
+)
+```
+
+```{r Create list of focal birds}
+focal_birds <- c("1681",
+                 "1331",
+                 "1361",
+                 "1333",
+                 "1326",
+                 "1301",
+                 "1368",
+                 "G20-0529-B6.5", "G20-0529", # recorded differently in different files
+                 "952",
+                 "1372")
+```
+
+```{r Create functions}
+count_by_bird <- function(df, id, truth, estimate, model_group=NA){
+    # Counts and summarises the number of true and estimated instances of each behaviour by ID
+    # model_id is used as an identifier within the output
+    if (is.na(model_group)) {
+        model_id = "unnamed model"
+        
+        count_truth <- df %>%
+        group_by(.data[[id]], .data[[truth]]) %>%
+        summarise(n_truth=n()) %>%
+        rename(behaviour=.data[[truth]],
+               id=.data[[id]])
+        
+        count_pred <- df %>%
+        group_by(.data[[id]], .data[[estimate]]) %>%
+        summarise(n_pred=n()) %>%
+        rename(behaviour=.data[[estimate]],
+               id=.data[[id]])
+        
+        all_counts <- full_join(count_truth, count_pred, 
+                                by=c('behaviour', 'id'))
+        
+        all_counts$n_pred <- replace_na(all_counts$n_pred, 0)
+        all_counts$n_truth <- replace_na(all_counts$n_truth, 0)
+        
+        ind_totals <- all_counts %>% 
+        group_by(id) %>% 
+        summarise(n_truth_total = sum(n_truth, na.rm=T),
+                  n_pred_total = sum(n_pred, na.rm=T))
+        
+        all_counts <- left_join(all_counts, ind_totals, by='id') %>%
+            mutate(perc_truth=n_truth/n_truth_total*100,
+                   perc_pred=n_pred/n_pred_total*100,
+                   model_id=model_id)
+    }
+    
+    if (!is.na(model_group)) {
+        count_truth <- df %>%
+        group_by(.data[[model_group]], .data[[id]], .data[[truth]]) %>%
+        summarise(n_truth=n()) %>%
+        rename(model_id=.data[[model_group]],
+               behaviour=.data[[truth]],
+               id=.data[[id]])
+        
+        count_pred <- df %>%
+        group_by(.data[[model_group]], .data[[id]], .data[[estimate]]) %>%
+        summarise(n_pred=n()) %>%
+        rename(model_id=.data[[model_group]],
+               behaviour=.data[[estimate]],
+               id=.data[[id]])
+        
+        all_counts <- full_join(count_truth, count_pred, 
+                                by=c('model_id', 'behaviour', 'id'))
+        
+        all_counts$n_pred <- replace_na(all_counts$n_pred, 0)
+        all_counts$n_truth <- replace_na(all_counts$n_truth, 0)
+        
+        ind_totals <- all_counts %>% 
+        group_by(model_id, id) %>% 
+        summarise(n_truth_total = sum(n_truth, na.rm=T),
+                  n_pred_total = sum(n_pred, na.rm=T))
+        
+        all_counts <- left_join(all_counts, ind_totals, by=c('model_id','id')) %>%
+            mutate(perc_truth=n_truth/n_truth_total*100,
+                   perc_pred=n_pred/n_pred_total*100)
+    }
+    
+    return(all_counts)
+}
+
+reduce_beh <- function(beh) {
+    new_beh <- case_when(beh=="aggressive posturing" ~ "courtship/territorial",
+                         beh=="dynamic squatting" ~ "courtship/territorial",
+                         beh=="static squatting" ~ "courtship/territorial",
+                         beh=="copulation attempt" ~ "courtship/territorial",
+                         beh=="mounting male" ~ "courtship/territorial",
+                         beh=="vigilance" ~ "rest/vigilance", 
+                         beh=="resting" ~ "rest/vigilance",
+                         beh=="being mounted" ~ "courtship/territorial",
+                         TRUE ~ beh)
+    return(new_beh)
+    }
+```
+
+# Random Forests
+
+For the stratified (randSTRAT and timeSTRAT) models, it is best to use the predictions for the test set. 
+For the LSIO models (also referred to as LSIO or LOIO), there were not enough individuals for a test set, so instead must use the cross-validation predictions.
+
+```{r Load RF top model predictions}
+rf_reduc_lsio <- 
+    fread(here("outputs","eval","RF_best-CV-predictions_reduced-classes.csv")) %>%
+    filter(grepl("LSIO", model_id, fixed = TRUE))
+
+rf_all_lsio <- fread(here("outputs","eval","RF_best-CV-predictions_original-classes.csv")) %>%
+    filter(grepl("LSIO", model_id, fixed = TRUE))
+    
+rf_reduc_strat <- fread(here("outputs","eval","best_RF_test-predictions_reduced-classes.csv")) %>%
+    filter(!grepl("LSIO", model_id, fixed=TRUE))
+
+rf_all_strat <- fread(here("outputs","eval","best_RF_test-predictions_original-classes.csv")) %>%
+    filter(!grepl("LSIO", model_id, fixed=TRUE))
+```
+
+```{r Reduce behaviours for reduced class predictions}
+rf_reduc_lsio$truth_beh <- reduce_beh(rf_reduc_lsio$truth_beh)
+rf_reduc_lsio$pred_beh <- reduce_beh(rf_reduc_lsio$pred_beh)
+rf_reduc_strat$truth_beh <- reduce_beh(rf_reduc_strat$truth_beh)
+rf_reduc_strat$pred_beh <- reduce_beh(rf_reduc_strat$pred_beh)
+```
+
+```{r Split LSIO models into separate dataframes}
+# To add bird info, need to separate the models; row numbers match up differently
+rf_reduc_lsio <- rf_reduc_lsio %>%
+    mutate(transitions = case_when(grepl("ToutAll", model_id, fixed=TRUE) ~ "excluded",
+                                  TRUE ~ "included"))
+rf_reduc_lsio_t <- rf_reduc_lsio %>% filter(transitions=="included")
+rf_reduc_lsio_nt <- rf_reduc_lsio %>% filter(transitions=="excluded")
+
+rf_all_lsio <- rf_all_lsio %>%
+    mutate(transitions = case_when(grepl("ToutAll", model_id, fixed=TRUE) ~ "excluded",
+                                  TRUE ~ "included"))
+rf_all_lsio_t <- rf_all_lsio %>% filter(transitions=="included")
+rf_all_lsio_nt <- rf_all_lsio %>% filter(transitions=="excluded")
+```
+
+```{r Add bird info to lsio predictions}
+# Note: bird info is already there for strat predictions
+windowed_dat <- fread(here("data","windowed","windowed-data.csv"))
+windowed_dat_nt <- windowed_dat %>% filter(transition==FALSE)
+windowed_dat$.row <- seq(1, nrow(windowed_dat), 1) # add row number
+windowed_dat_nt$.row <- seq(1, nrow(windowed_dat_nt), 1) # add row number
+
+# Subset columns
+windowed_sub <- windowed_dat %>% select(recording_id:majority_behaviour, .row)
+windowed_sub_nt <- windowed_dat_nt %>% select(recording_id:majority_behaviour, .row)
+
+# Join with bird info
+rf_reduc_lsio_t <- full_join(windowed_sub, rf_reduc_lsio_t, by=".row")
+rf_reduc_lsio_nt <- full_join(windowed_sub_nt, rf_reduc_lsio_nt, by=".row")
+rf_all_lsio_t <- full_join(windowed_sub, rf_all_lsio_t, by=".row")
+rf_all_lsio_nt <- full_join(windowed_sub_nt, rf_all_lsio_nt, by=".row")
+```
+
+```{r Clean redundant RF dataframes}
+rm(windowed_dat_nt, rf_reduc_lsio, rf_all_lsio)
+```
+
+```{r Combine all predictions and add unique ID for model}
+rf_preds <- bind_rows(lst(rf_all_lsio_nt,
+                      rf_all_lsio_t,
+                      rf_reduc_lsio_nt,
+                      rf_reduc_lsio_t,
+                      rf_all_strat,
+                      rf_reduc_strat),
+                      .id="model_spec")
+
+rf_preds$model_id <- paste(rf_preds$model_spec, rf_preds$model_id)
+```
+
+```{r Count RF true and predicted behaviours}
+rf_counts <- count_by_bird(rf_preds, 
+                      id='ruff_id', 
+                      truth='truth_beh', 
+                      estimate='pred_beh',
+                      model_group='model_id')
+```
+
+```{r Subset to RF focal birds and calculate correlation coefficient}
+rf_counts_focal <- rf_counts %>% filter(id %in% focal_birds)
+
+rf_cors <- rf_counts_focal %>% 
+    group_by(model_id, behaviour) %>%
+    dplyr::summarize(cor_spearman = cor(x=perc_truth, y=perc_pred, method="spearman"))
+```
+
+# Hidden Markov Models
+
+```{r Load and combine HMM predictions}
+hmm_reduc_lsio <- fread(here("outputs","eval","HMM_CV_predictions_reduced-classes.csv")) %>%
+    filter(split=="LSIO")
+hmm_all_lsio <- fread(here("outputs","eval","HMM_CV_predictions_original-classes.csv")) %>%
+    filter(split=="LSIO")
+
+hmm_reduc_strat <- fread(here("outputs","eval","HMM_test_predictions_reduced-classes.csv")) %>%
+    filter(split=="timesplit")
+hmm_all_strat <- fread(here("outputs","eval","HMM_test_predictions_original-classes.csv")) %>%
+    filter(split=="timesplit")
+
+hmm_preds <- bind_rows(lst(hmm_reduc_lsio,
+                      hmm_all_lsio,
+                      hmm_reduc_strat,
+                      hmm_all_strat),
+                      .id="model_id")
+```
+
+```{r Add bird ID to HMM predictions}
+hmm_preds <- hmm_preds %>%
+    mutate(ruff_id=sub("_.*", "", recording_id))
+```
+
+```{r Count HMM true and predicted behaviours}
+hmm_counts <- count_by_bird(hmm_preds, 
+                      id='ruff_id', 
+                      truth='truth_beh', 
+                      estimate='pred_beh',
+                      model_group='model_id')
+```
+
+```{r Subset to HMM focal birds and calculate correlation coefficient}
+hmm_counts_focal <- hmm_counts %>% filter(id %in% focal_birds)
+
+hmm_cors <- hmm_counts_focal %>% 
+    group_by(model_id, behaviour) %>%
+    dplyr::summarize(cor_spearman = cor(x=perc_truth, y=perc_pred, method="spearman"))
+```
+
+# Neural networks
+
+```{r Load and combine NN predictions}
+nn_reduc_lsio <- fread(here("outputs","eval","NN_CV_predictions_reduced-classes.csv"))
+
+nn_all_lsio <- fread(here("outputs","eval","NN_CV_predictions_original-classes.csv"))
+
+nn_preds <- bind_rows(lst(nn_reduc_lsio,
+                      nn_all_lsio),
+                      .id="model_id")
+```
+
+```{r Add bird ID to NN predictions}
+segment_ids <- windowed_dat %>%
+    group_by(segment_id) %>%
+    summarise(ruff_id=first(ruff_id),
+              recording_id=first(recording_id))
+
+nn_preds <- left_join(nn_preds, 
+                      segment_ids,
+                      by='segment_id')
+```
+
+```{r Count NN true and predicted behaviours}
+nn_counts <- count_by_bird(nn_preds, 
+                      id='ruff_id', 
+                      truth='truth_beh', 
+                      estimate='pred_beh',
+                      model_group='model_id')
+```
+
+```{r Subset to NN focal birds and calculate correlation coefficient}
+nn_counts_focal <- nn_counts %>% filter(id %in% focal_birds)
+
+nn_cors <- nn_counts_focal %>% 
+    group_by(model_id, behaviour) %>%
+    dplyr::summarize(cor_spearman = cor(x=perc_truth, y=perc_pred, method="spearman"))
+```
+
+# Tidy and export summarised data
+
+```{r Tidy summaries}
+join_counts <- rbind(hmm_counts, rf_counts, nn_counts) %>%
+    mutate(model_type=fcase(grepl("rf",model_id,fixed=TRUE), "RF",
+                                grepl("hmm", model_id, fixed=TRUE), "HMM",
+                                grepl("nn", model_id, fixed=TRUE), "NN"),
+           split_type=fcase(grepl("time", model_id, fixed=TRUE), "timeSTRAT",
+                            grepl("lsio", model_id, fixed=TRUE), "LSIO",
+                            grepl("hmm", model_id, fixed=TRUE) & grepl("strat", model_id, fixed=TRUE), "timeSTRAT",
+                            grepl("strat", model_id, fixed=TRUE), "randSTRAT"),
+           transitions_in_test=fcase(model_type=="HMM", as.character(NA),
+                                     model_type=="NN", as.character(NA),
+                                     grepl("ToutAll",model_id,fixed=TRUE), "no",
+                                     model_type=="RF", "yes"),
+           classes=fcase(grepl("reduc", model_id, fixed=TRUE), "reduced_classes",
+                         grepl("all", model_id, fixed=TRUE), "original_classes")) %>%
+    rename(ruff_id=id)
+
+join_cors <- rbind(hmm_cors, rf_cors, nn_cors) %>%
+    mutate(model_type=fcase(grepl("rf",model_id,fixed=TRUE), "RF",
+                                grepl("hmm", model_id, fixed=TRUE), "HMM",
+                                grepl("nn", model_id, fixed=TRUE), "NN"),
+           split_type=fcase(grepl("time", model_id, fixed=TRUE), "timeSTRAT",
+                            grepl("lsio", model_id, fixed=TRUE), "LSIO",
+                            grepl("hmm", model_id, fixed=TRUE) & grepl("strat", model_id, fixed=TRUE), "timeSTRAT",
+                            grepl("strat", model_id, fixed=TRUE), "randSTRAT"),
+           transitions_in_test=fcase(model_type=="HMM", as.character(NA),
+                                     model_type=="NN", as.character(NA),
+                                     grepl("ToutAll",model_id,fixed=TRUE), "no",
+                                     model_type=="RF", "yes"),
+           classes=fcase(grepl("reduc", model_id, fixed=TRUE), "reduced_classes",
+                         grepl("all", model_id, fixed=TRUE), "original_classes"))
+```
+
+```{r Write files}
+write.csv(join_counts, 
+         here("outputs","eval","true-vs-predicted_ind-beh-counts.csv"),
+          row.names=FALSE)
+
+write.csv(join_cors, 
+         here("outputs","eval","correlation-coefficients.csv"),
+         row.names=FALSE)
+```

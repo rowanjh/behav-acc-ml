@@ -1,0 +1,942 @@
+---
+title: "Creating tables and figures for publication"
+authors: Anne Aulsebrook
+output: 
+  rmdformats::robobook:
+    toc_depth: 2
+    code_folding: hide
+---
+
+*Purpose*: This notebook is used to create the tables and figures included in the manuscript.
+
+*Date created*: May 10 2023
+
+```{r Set up packages and workspace}
+library(data.table) # for fread
+library(dplyr)
+library(tidyr) # for pivot_wider
+library(glue)
+require(flextable) # for nice table outputs
+library(officer) # for fp_border
+library(stringr)
+library(gdtools)
+library(tibble)
+library(ggplot2)
+library(viridis) # for colour scaling
+library(gridExtra)
+library(here)
+input_dir <- here("outputs","eval")
+output_dir <- here("outputs","tables-figures")
+options(huxtable.knit_print_df = TRUE)
+```
+
+```{r Set number of digits}
+digs = 2
+```
+
+```{r Set formatting parameters}
+set_flextable_defaults(
+  theme_fun = theme_apa,
+  font.size=10,
+  padding = 0.25,
+  font.color = "black",
+  font.family = "Calibri",
+  big.mark = ",",
+  na_str = " ",
+  nan_str = " "
+)
+
+port_width <- 18
+land_width <- 23
+```
+
+```{r Create list of focal birds}
+focal_birds <- c("1681",
+                 "1331",
+                 "1361",
+                 "1333",
+                 "1326",
+                 "1301",
+                 "1368",
+                 "G20-0529-B6.5", "G20-0529", # recorded differently in different files
+                 "952",
+                 "1372")
+```
+
+```{r Create functions for formatting}
+rnd <- function(x){
+    format(round(x, digs), nsmall = digs)
+}
+
+format_mean_sd <- function(mean, sd){
+    val_with_sd <- case_when(is.na(sd) ~ rnd(mean),
+                             TRUE ~ paste(rnd(mean), "±", rnd(sd)))
+    return(val_with_sd)
+}
+
+rename_behaviours <- function(behs) {
+    new_behs <- behs %>%
+        str_replace("flying", "fly") %>%
+        str_replace("foraging or drinking", "forage or drink") %>%
+        str_replace("preening", "preen") %>%
+        str_replace("resting", "rest") %>%
+        str_replace("vigilance", "vigilant") %>%
+        str_replace("walking or running", "walk or run") %>%
+        str_replace("aggressive posturing", "forward aggressive") %>%
+        str_replace("dynamic squatting", "dynamic squat") %>%
+        str_replace("static squatting", "static squat") %>%
+        str_replace("courtship/territorial", "mating behaviours")
+    return(new_behs)
+}
+
+order_behaviours <- function(behs) {
+    ordered_behs <- ordered(behs, 
+                            levels = c("fly",
+                                              "forage or drink",
+                                              "preen",
+                                              "rest",
+                                              "vigilant",
+                                              "walk or run",
+                                              "other",
+                                              "forward aggressive",
+                                              "dynamic squat",
+                                              "static squat",
+                                              "copulation attempt",
+                                              "mounting male",
+                                              "being mounted",
+                                              "mating behaviours",
+                                              "rest/vigilant"))
+    return(ordered_behs)
+}
+```
+
+# Behaviour summary (Table 1)
+
+```{r Import windowed and behavioural data}
+windowed_dat <- fread(here("data","windowed","windowed-data.csv"))
+beh_full <- fread(here("data","clean", "ruff_behaviours_adjusted_for_drift.csv"))
+```
+
+```{r Extract key information about behaviours}
+beh_counts <- windowed_dat %>%
+    group_by(majority_behaviour) %>%
+    rename(Behaviour = majority_behaviour) %>%
+    summarise(`total duration (s)`=n(),
+              #`n bouts`=n_distinct(beh_event_id),
+              `% transitions`=sum(transition==TRUE)/`total duration (s)`*100)
+
+beh_duration <- beh_full %>%
+    group_by(behaviour) %>%
+    rename(Behaviour = behaviour) %>%
+    summarise(`mean duration (s)` = mean(duration_secs))
+
+beh_counts <- left_join(beh_counts, beh_duration, by="Behaviour")
+```
+
+```{r Create behaviour table}
+beh_counts$Behaviour <- rename_behaviours(beh_counts$Behaviour)
+beh_counts$Behaviour <- order_behaviours(beh_counts$Behaviour)
+beh_counts <- beh_counts %>% arrange(Behaviour)
+beh_counts$`% transitions` <- rnd(beh_counts$`% transitions`)
+
+
+beh_counts <- beh_counts %>%
+    mutate(Description = case_when(Behaviour=="fly" ~ "Flying",
+                                    Behaviour=="forage or drink" ~ "Handling food, drinking, or lowering head to search for food",
+                                    Behaviour=="preen" ~ "Preening feathers using bill",
+                                    Behaviour=="rest" ~ "Sitting or standing with eyes closing or bill tucked into feathers",
+                                    Behaviour=="vigilant" ~ "Sitting or standing with head upright, looking around",
+                                    Behaviour=="walk or run" ~ "Walking or running in an upright posture",
+                                    Behaviour=="forward aggressive" ~ "Standing with body angled forwards and bill horizontal. Can be accompanied by bill thrusting, stamping, tail trembling and/or charging",
+                                    Behaviour=="dynamic squat" ~ "Shuffling while in a horizontal posture, with bill pointed vertically at the ground",
+                                    Behaviour=="static squat" ~ "Standing or sitting still in a tense horizontal posture, with bill pointed at the ground",
+                                    Behaviour=="copulation attempt" ~ "Mounting female and attempting to copulate, bending tail downwards",
+                                    Behaviour=="mounting male" ~ "Mounting another male. Often includes shaking the tail from side to side",
+                                    Behaviour=="being mounted" ~ "Being mounted by another male",
+                                   Behaviour=="other" ~ "All other behaviours",
+                                    TRUE ~ "error")) %>%
+    relocate(Description, .after = Behaviour) %>%
+    relocate(`% transitions`, .after = `mean duration (s)`)
+
+beh_counts
+```
+
+```{r Make behaviour summary flextable, width = 50}
+beh_col_width <- 3.5
+desc_col_width <- 6
+
+beh_flex <- beh_counts %>%
+    flextable() %>%
+    align(align = "left", part="all") %>%
+    colformat_double(j=4,
+                     digits=2) %>%
+    align(j=3:5, align="right", part="all") %>%
+    valign(valign="top", part="body") %>%
+    line_spacing(space = 1.5, part = "all") %>%
+    font(fontname="Calibri", part="all") %>%
+    # ---- Rename and format headings ----
+    bold(part="header") %>%
+    # ---- Set width ----
+    width(width=(port_width-beh_col_width-desc_col_width)/(ncol(beh_counts)-2), unit="cm") %>%
+    width(j=1, beh_col_width, "cm") %>%
+    width(j=2, desc_col_width, "cm")
+
+beh_flex
+```
+
+```{r Save behaviour table}
+save_as_docx(beh_flex, path = here(output_dir, "behaviour_summary.docx"), 
+             align = "left")
+```
+
+
+# Macro-averaged model metrics (Table 2)
+
+```{r Gather and combined macro-averaged metrics}
+macro_og <- read.csv(here(input_dir, "top_macro-metrics_original-classes.csv"))
+macro_reduc <- read.csv(here(input_dir, "top_macro-metrics_reduced-classes.csv"))
+
+macro_og <- macro_og %>%
+    mutate(classes="original_classes")
+macro_reduc <- macro_reduc %>%
+    mutate(classes="reduced_classes")
+
+macro <- full_join(macro_og, macro_reduc)
+```
+
+```{r Summarise macro metrics}
+macro_summary <- macro %>%
+    mutate(split_val = paste(split_type, validation_type),
+           all_prec=format_mean_sd(precision, precision_sd),
+           all_recall=format_mean_sd(recall, recall_sd),
+           all_fmeas=format_mean_sd(f_meas, f_meas_sd),
+           mat_prec=format_mean_sd(precision_mat, precision_sd_mat),
+           mat_recall=format_mean_sd(recall_mat, recall_sd_mat),
+           mat_fmeas=format_mean_sd(f_meas_mat, f_meas_sd_mat)) %>%
+    select(model_type, model_id, split_type, split_val, transitions_in_test, classes, all_prec:mat_fmeas)
+```
+
+```{r Macro table}
+# ---- Restructure table ----
+macro_table <- macro_summary %>%
+    filter(transitions_in_test=="yes" | is.na(transitions_in_test)) %>%
+    filter(split_val!="randstrat CV" & split_val!= "timesplit CV") %>%
+    select(model_type, split_type, classes:mat_fmeas) %>%
+    mutate(split_type = str_replace(split_type, "randstrat", "randSTRAT"),
+           split_type = str_replace(split_type, "timesplit", "timeSTRAT"),
+           classes = str_replace(classes, "original_classes", "Original classes"),
+           classes = str_replace(classes, "reduced_classes", "Reduced classes"))
+
+# ---- Set factor order ----
+macro_table$model_type <- ordered(macro_table$model_type, levels = c("RF", "HMM", "NN"))
+macro_table$split_type <- ordered(macro_table$split_type, levels = c("randSTRAT", "timeSTRAT", "LSIO"))
+
+# ---- Arrange table ----
+macro_table <- macro_table %>%
+    arrange(classes, model_type, split_type) 
+
+macro_table
+```
+
+
+```{r Macro flextable}
+# ~~~~~ FORMAT MACRO TABLE -----------------------------------------------------
+first_col_width <- 0.1
+
+macro_table_flex <- 
+    # ---- Basic formatting ----
+    macro_table %>%
+    # select(-all_fmeas, -mat_fmeas) %>%
+    # filter(model_type=="RF" | split_type=="LSIO") %>%
+    as_grouped_data(groups="classes") %>%
+    flextable() %>%
+    align(align = "left", part="all") %>%
+    line_spacing(space = 1.25, part = "all") %>%
+    add_header_row(values = c("","All behaviours", "Mating behaviours"),
+                   colwidths = c(3, 3, 3)) %>%
+    bold(part="header") %>%
+    font(fontname="Calibri", part="all") %>%
+    width(width=(port_width-first_col_width)/ncol(macro_table), unit="cm") %>%
+    width(j=1, first_col_width, "cm") %>%
+    # ---- Rename and format headings ----
+    set_header_labels(classes="") %>%
+    bold(i = ~ !is.na(classes), part="body") %>%
+    set_header_labels(values = list(model_type = "Model type",
+                                    split_type = "Split type",
+                                    all_prec = "Precision",
+                                    all_recall = "Recall",
+                                    all_fmeas = "F1-score",
+                                    mat_prec = "Precision",
+                                    mat_recall = "Recall",
+                                    mat_fmeas = "F1-score")) %>%
+    merge_at(i=1, j=1:9, part="body") %>% # Original classes
+    merge_at(i=8, j=1:9, part="body") %>% # Reduced classes
+    # ---- Format 'model type' column ----
+    merge_v(j = "model_type", target = "model_type", part = "body", combine = FALSE) %>%
+    valign(valign="top", part="body") %>% # align
+    # ---- Add borders ----
+    hline(i=4, j=2:9, part="body") %>%
+    hline(i=6, j=2:9, part="body") %>%
+    hline(i=11, j=2:9, part="body") %>%
+    hline(i=13, j=2:9, part="body")
+
+macro_table_flex
+```
+
+```{r Save macro metrics table}
+save_as_docx(macro_table_flex, path = here(output_dir, "macro_metrics_table.docx"), 
+             align = "left")
+```
+
+# Class metrics (Table 3)
+
+```{r Gather and combined class metrics}
+class_og <- read.csv(here(input_dir, "top_class-metrics_original-classes.csv"))
+class_reduc <- read.csv(here(input_dir, "top_class-metrics_reduced-classes.csv"))
+
+class_og <- class_og %>%
+    mutate(classes="original_classes")
+class_reduc <- class_reduc %>%
+    mutate(classes="reduced_classes")
+
+class <- full_join(class_og, class_reduc)
+```
+```{r Summarise class metrics}
+class_summary <- class %>%
+    mutate(split_val = paste(split_type, validation_type),
+           prec=format_mean_sd(precision, precision_sd),
+           rec=format_mean_sd(recall, recall_sd),
+           fmeas=format_mean_sd(f_meas, f_meas_sd)) %>%
+    filter(classes=="original_classes"|behaviour=="courtship/territorial"|behaviour=="rest/vigilance") %>%
+    select(model_type, model_id, split_type, split_val, transitions_in_test, behaviour, classes, prec:fmeas)
+```
+
+```{r Order factors for class metrics}
+class_summary$behaviour <- rename_behaviours(class_summary$behaviour)
+class_summary$behaviour <- order_behaviours(class_summary$behaviour)
+
+class_summary$model_type <- ordered(class_summary$model_type, levels = c("RF", "HMM", "NN"))
+
+class_summary$split_type <- ordered(class_summary$split_type, 
+                                    levels = c("randstrat", "timesplit", "LSIO"))
+
+class_summary$model_split_val <- paste(class_summary$model_type, class_summary$split_val)
+```
+
+```{r Class table with model columns}
+# ---- Restructure table ----
+class_table <- class_summary %>%
+    filter(transitions_in_test=="yes" | is.na(transitions_in_test)) %>%
+    filter(model_split_val!="RF randstrat CV" & 
+               model_split_val!= "RF timesplit CV" &
+               model_split_val!= "HMM timesplit CV") %>%
+    select(model_type, split_type, behaviour:fmeas) %>%
+    mutate(split_type = str_replace(split_type, "randstrat", "randSTRAT"),
+           split_type = str_replace(split_type, "timesplit", "timeSTRAT"),
+           classes = str_replace(classes, "original_classes", "Original classes"),
+           classes = str_replace(classes, "reduced_classes", "Reduced classes"),
+           behaviour_type = case_when(behaviour=="forward aggressive" ~ "Mating behaviours",
+                                      behaviour=="static squat" ~ "Mating behaviours",
+                                      behaviour=="dynamic squat" ~ "Mating behaviours",
+                                      behaviour=="mounting male" ~ "Mating behaviours",
+                                      behaviour=="copulation attempt" ~ "Mating behaviours",
+                                      behaviour=="being mounted" ~ "Mating behaviours",
+                                      classes=="Reduced classes" ~ "Combined behaviours",
+                                      TRUE ~ "Non-mating behaviours"))
+
+class_table_long <- class_table %>%
+    pivot_longer(cols=c(prec,rec,fmeas),
+                 names_to="metric")
+
+class_table_wide <- class_table_long %>%
+    pivot_wider(names_from=c(model_type, split_type),
+                values_from=c(value))
+
+# ---- Arrange table ----
+class_table_wide <- class_table_wide %>%
+    relocate('classes','behaviour', 'metric',
+             'RF_randSTRAT', 'RF_timeSTRAT', 'RF_LSIO', 
+             'HMM_timeSTRAT', 'HMM_LSIO',
+             'NN_LSIO') %>%
+    select(!classes) %>%
+    arrange(behaviour)
+```
+
+```{r Format class table}
+first_col_width <- 0.1
+beh_col_width <- 4
+
+class_table_flex <- 
+    # ---- Basic formatting ----
+    class_table_wide %>%
+    filter(metric=="fmeas") %>%
+    filter(behaviour!="other") %>%
+    select(!metric) %>%
+    as_grouped_data(groups="behaviour_type") %>%
+    flextable() %>%
+    # merge_v(j = "behaviour", target = "behaviour", part = "body", combine = FALSE) %>%
+    # valign(valign="top") %>%
+    align(align = "left", part="all") %>%
+    line_spacing(space = 1.25, part = "all") %>%
+    font(fontname="Calibri", part="all") %>%
+    # ---- Rename and format headings ----
+    set_header_labels(behaviour_type="") %>%
+    bold(i = ~ !is.na(behaviour_type), part="body") %>%
+    add_header_row(values = c("","RF", "HMM", "NN"),
+                   colwidths = c(2, 3, 2, 1)) %>%
+    set_header_labels(values = list(behaviour = "Behaviour",
+                                    RF_randSTRAT = "randSTRAT",
+                                    RF_timeSTRAT = "timeSTRAT",
+                                    RF_LSIO = "LSIO",
+                                    HMM_timeSTRAT = "timeSTRAT",
+                                    HMM_LSIO="LSIO",
+                                    NN_LSIO="LSIO")) %>%
+    merge_at(i=1, j=1:7, part="body") %>% # Non-mating
+    merge_at(i=8, j=1:7, part="body") %>% # Mating
+    merge_at(i=15, j=1:7, part="body") %>% # Combined
+    bold(part="header") %>%
+    # ---- Set width ----
+    width(width=(port_width-first_col_width-beh_col_width)/(ncol(class_table_wide)-2), unit="cm") %>%
+    width(j=1, first_col_width, "cm") %>%
+    width(j=2, beh_col_width, "cm")
+
+class_table_flex
+```
+
+```{r Save class metrics table}
+save_as_docx(class_table_flex, align = "left",
+             path = here(output_dir,"class_metrics_table.docx"))
+```
+
+# Correlation table (Table 4)
+
+```{r Import correlation coefficients}
+cors <- read.csv(here(input_dir, "correlation-coefficients.csv"))
+```
+
+```{r Summarise correlation coefficients}
+cors <- cors %>%
+    filter(classes=="original_classes"|behaviour=="courtship/territorial"|behaviour=="rest/vigilance")
+```
+
+```{r Order factors for correlation coefficients}
+cors$behaviour <- rename_behaviours(cors$behaviour)
+cors$behaviour <- order_behaviours(cors$behaviour)
+
+cors$model_type2 <- ordered(cors$model_type, levels = c("RF", "HMM", "NN"))
+
+cors$split_type2 <- ordered(cors$split_type, 
+                           levels = c("randSTRAT", "timeSTRAT", "LSIO"))
+```
+
+```{r Correlation table with model columns}
+# ---- Restructure table ----
+cors_table <- cors %>%
+    filter(transitions_in_test=="yes" | is.na(transitions_in_test)) %>%
+    select(model_type, split_type, behaviour, cor_spearman, classes) %>%
+    mutate(classes = str_replace(classes, "original_classes", "Original classes"),
+           classes = str_replace(classes, "reduced_classes", "Reduced classes"),
+           behaviour_type = case_when(behaviour=="forward aggressive" ~ "Mating behaviours",
+                                      behaviour=="static squat" ~ "Mating behaviours",
+                                      behaviour=="dynamic squat" ~ "Mating behaviours",
+                                      behaviour=="mounting male" ~ "Mating behaviours",
+                                      behaviour=="copulation attempt" ~ "Mating behaviours",
+                                      behaviour=="being mounted" ~ "Mating behaviours",
+                                      classes=="Reduced classes" ~ "Combined behaviours",
+                                      TRUE ~ "Non-mating behaviours"))
+
+cors_table_wide <- cors_table %>%
+    #filter(split_type=="LSIO") %>%
+    pivot_wider(names_from=c(model_type, split_type),
+                values_from=cor_spearman)
+
+# ---- Arrange table ----
+cors_table_wide <- cors_table_wide %>%
+    # relocate('classes','behaviour', 
+    #          'RF_randSTRAT', 'RF_timeSTRAT', 'RF_LSIO', 
+    #          'HMM_timeSTRAT', 'HMM_LSIO', 'NN_LSIO') %>%
+    select(!classes) %>%
+    arrange(behaviour)
+```
+
+```{r Select and rearrange correlation columns}
+cors_table_tidy <- cors_table_wide %>%
+    select(behaviour, behaviour_type,
+           RF_randSTRAT, RF_timeSTRAT, RF_LSIO,
+           HMM_timeSTRAT, HMM_LSIO,
+           NN_LSIO) %>%
+    filter(behaviour!="other")
+```
+
+```{r Format correlation table table}
+first_col_width <- 0.1
+beh_col_width <- 4
+
+cors_table_flex <- 
+    # ---- Basic formatting ----
+    cors_table_tidy %>%
+    as_grouped_data(groups="behaviour_type") %>%
+    flextable() %>%
+    # merge_v(j = "behaviour", target = "behaviour", part = "body", combine = FALSE) %>%
+    # valign(valign="top") %>%
+    align(align = "left", part="all") %>%
+    line_spacing(space = 1.25, part = "all") %>%
+    font(fontname="Calibri", part="all") %>%
+    # ---- Rename and format headings ----
+    set_header_labels(behaviour_type="") %>%
+    bold(i = ~ !is.na(behaviour_type), part="body") %>%
+    add_header_row(values = c("","RF", "HMM", "NN"),
+                   colwidths = c(2, 3, 2, 1)) %>%
+    set_header_labels(values = list(behaviour = "Behaviour",
+                                    cor_spearman_RF_randSTRAT = "randSTRAT",
+                                    cor_spearman_RF_timeSTRAT = "timeSTRAT",
+                                    cor_spearman_RF_LSIO = "LSIO",
+                                    cor_spearman_HMM_timeSTRAT = "timeSTRAT",
+                                    cor_spearman_HMM_LSIO="LSIO",
+                                    cor_spearman_NN_LSIO="LSIO")) %>%
+    merge_at(i=1, j=1:7, part="body") %>% # Non-mating
+    merge_at(i=8, j=1:7, part="body") %>% # Mating
+    merge_at(i=15, j=1:7, part="body") %>% # Combined
+    bold(part="header") %>%
+    # ---- Set width ----
+    width(width=(port_width-first_col_width-beh_col_width)/(ncol(cors_table_tidy)-2), unit="cm") %>%
+    width(j=1, first_col_width, "cm") %>%
+    width(j=2, beh_col_width, "cm")
+
+cors_table_flex
+```
+
+```{r Save correlation table}
+save_as_docx(cors_table_flex, path = here(output_dir,"correlation_table.docx"), 
+             align = "left")
+```
+
+# Correlation plots (Figure 2)
+
+```{r Subset to correlation values of interest and combine with F1 scores}
+cors_table_sub <- cors_table_wide %>% 
+    select(behaviour,
+           behaviour_type,
+           HMM_LSIO) %>%
+    rename(r=HMM_LSIO)
+
+class_table_sub <- class_table_wide %>% 
+    filter(metric=="fmeas") %>%
+    select(behaviour, HMM_LSIO) %>%
+    rename(`F1-score`=HMM_LSIO) %>%
+    mutate(`F1-score`=substr(`F1-score`,1,4))
+
+cors_table_sub <- left_join(cors_table_sub, class_table_sub, by="behaviour")
+
+cors_table_sub
+```
+
+## Get count data
+
+```{r Import and format counts}
+counts <- read.csv(here(input_dir, "true-vs-predicted_ind-beh-counts.csv"))
+
+# Subset to focal birds and remove duplicates
+counts <- counts %>% 
+    filter(ruff_id %in% focal_birds) %>%
+    filter(classes=="original_classes"|behaviour=="courtship/territorial"|behaviour=="rest/vigilance")
+
+counts$behaviour <- rename_behaviours(counts$behaviour) 
+```
+
+```{r Filter counts}
+counts_sub <- counts %>%
+    filter(model_type=="HMM",
+           split_type=="LSIO")
+```
+
+## Create plots
+
+```{r Create base plot}
+plot_cor <- function(behaviour_data, max, break_interval,
+                     cors_table) {
+    text_size = 10
+    text_family = "Calibri"
+    beh = behaviour_data$behaviour[1]
+    f1 = subset(cors_table_sub, behaviour == beh)$`F1-score`
+    r = subset(cors_table_sub, behaviour == beh)$r
+    cor_plot <- ggplot(data=behaviour_data,
+                       aes(x=perc_truth, y=perc_pred))+
+        theme_classic()+
+        geom_abline(slope=1, intercept=0, colour="grey", linetype="dotted")+
+        # facet_wrap(~behaviour, scales="free", nrow=1)+
+        coord_cartesian(xlim=c(0,max),
+                        ylim=c(0,max))+
+        scale_x_continuous(breaks=seq(0, max, by=break_interval),
+                           expand=c(0.02,0.02))+
+        scale_y_continuous(breaks=seq(0, max, by=break_interval),                    
+                           expand=c(0.02,0.02))+
+        xlab("\nTrue % time")+
+        ylab("Estimated % time\n")+
+        geom_point(shape=21, alpha=0.5, size=2, color="black", fill="#475a94") +
+        theme(aspect.ratio=1,
+              axis.text=element_text(size=text_size, family = text_family),
+              #axis.title=element_text(size=text_size+1),
+              axis.title=element_blank(),
+              plot.title=element_text(size=text_size, face="italic", family = text_family),
+              plot.margin = unit(c(0.1, 0, 0.7, 0), "lines"))+
+        ggtitle(label=paste0("  ", beh))+
+        annotate(geom="text", 
+                 label=paste0(" F1 = ", f1, "\n",
+                              " r = ", rnd(r)),
+                 x = 0, y = Inf, hjust = 0, vjust = 1.1,
+                 size=(text_size)/.pt, family=text_family)
+        # geom_text(data = cors_table %>% filter(behaviour==behaviour),
+        #           # size=3,
+        #           # colour="darkgray",
+        #           aes(label = PCC))#,
+        #           # vjust = 0.5,
+        #           # hjust = 0)
+    return(cor_plot)
+}
+
+plot_cor(counts_sub, max=60, break_interval=10, cors_table_sub)
+```
+
+```{r Create correlation plots}
+plot_a <- plot_cor(counts_sub %>% filter(behaviour=="fly"),
+                   max=6,
+                   break_interval=1)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_b <- plot_cor(counts_sub %>% filter(behaviour=="forage or drink"),
+                   max=25,
+                   break_interval=5)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_c <- plot_cor(counts_sub %>% filter(behaviour=="preen"),
+                   max=30,
+                   break_interval=10)#+
+    #     ylab("\n")+
+    # xlab("\n")
+
+plot_d <- plot_cor(counts_sub %>% filter(behaviour=="rest"),
+                   max=60,
+                   break_interval=20)#+
+    #     ylab("\n")+
+    # xlab("\n")
+
+plot_e <- plot_cor(counts_sub %>% filter(behaviour=="vigilant"),
+                   max=45,
+                   break_interval=10)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_f <- plot_cor(counts_sub %>% filter(behaviour=="walk or run"),
+                   max=25,
+                   break_interval=5)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_g <- plot_cor(counts_sub %>% filter(behaviour=="forward aggressive"),
+                   max=40,
+                   break_interval=10)#+
+    # xlab("\n")
+
+plot_h <- plot_cor(counts_sub %>% filter(behaviour=="dynamic squat"),
+                   max=30,
+                   break_interval=10)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_i <- plot_cor(counts_sub %>% filter(behaviour=="static squat"),
+                   max=38,
+                   break_interval=10)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_j <- plot_cor(counts_sub %>% filter(behaviour=="copulation attempt"),
+                   max=3.2,
+                   break_interval=1)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_k <- plot_cor(counts_sub %>% filter(behaviour=="mounting male"),
+                   max=3.2,
+                   break_interval=1)#+
+    #     ylab("\n")+
+    # xlab("\n")
+
+plot_l <- plot_cor(counts_sub %>% filter(behaviour=="being mounted"),
+                   max=3.2,
+                   break_interval=1)#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_m <- plot_cor(counts_sub %>% filter(behaviour=="mating behaviours"),
+                   max=65,
+                   break_interval=20)+
+    ggtitle(label=paste0("  ", "mating behs (pooled)"))#+
+    # ylab("\n")+
+    # xlab("\n")
+
+plot_n <- plot_cor(counts_sub %>% filter(behaviour=="rest/vigilant"),
+                   max=65,
+                   break_interval=20)+
+     ggtitle(label=paste0("  ", "rest/vigilant (pooled)"))#+
+    # ylab("\n")
+```
+
+```{r Combine plots, fig.width=5.06, fig.height=7.89}
+grid_cor_plots2 <- grid.arrange(plot_a, plot_b, plot_c, 
+                               plot_d, plot_e, plot_f,
+                               plot_g, plot_h, plot_i,
+                               plot_j, plot_k, plot_l,
+                               plot_m, plot_n,
+                               nrow = 5, ncol = 3)
+```
+
+```{r Save correlation plot}
+ggsave(here(output_dir,"correlation_plots.png"), plot=grid_cor_plots2,
+       width=13.8, height=21.5, units="cm", dpi=600)
+```
+
+# Confusion matrices (Table 5, Supplementary Tables)
+
+```{r Gather predictions for confusion matrices}
+rf_cv_preds <- read.csv(here(input_dir, "RF_best-CV-predictions_original-classes.csv"))
+hmm_cv_preds <- read.csv(here(input_dir, "HMM_CV_predictions_original-classes.csv"))
+nn_cv_preds <- read.csv(here(input_dir, "NN_CV_predictions_original-classes.csv"))
+
+rf_loso_preds <- rf_cv_preds %>%
+    filter(grepl("LSIO", model_category) & !grepl("ToutAll", model_category))
+
+hmm_loso_preds <- hmm_cv_preds %>%
+    filter(model_id=="hmm_LSIO")
+
+nn_loso_preds <- nn_cv_preds
+```
+
+```{r Order factors}
+rf_loso_preds$pred_beh <- rename_behaviours(rf_loso_preds$pred_beh)
+rf_loso_preds$truth_beh <- rename_behaviours(rf_loso_preds$truth_beh)
+rf_loso_preds$pred_beh <- order_behaviours(rf_loso_preds$pred_beh)
+rf_loso_preds$truth_beh <- order_behaviours(rf_loso_preds$truth_beh)
+
+hmm_loso_preds$pred_beh <- rename_behaviours(hmm_loso_preds$pred_beh)
+hmm_loso_preds$truth_beh <- rename_behaviours(hmm_loso_preds$truth_beh)
+hmm_loso_preds$pred_beh <- order_behaviours(hmm_loso_preds$pred_beh)
+hmm_loso_preds$truth_beh <- order_behaviours(hmm_loso_preds$truth_beh)
+
+nn_loso_preds$pred_beh <- rename_behaviours(nn_loso_preds$pred_beh)
+nn_loso_preds$truth_beh <- rename_behaviours(nn_loso_preds$truth_beh)
+nn_loso_preds$pred_beh <- order_behaviours(nn_loso_preds$pred_beh)
+nn_loso_preds$truth_beh <- order_behaviours(nn_loso_preds$truth_beh)
+```
+
+```{r Create table properties}
+confmat_beh_col_width <- 3
+true_pos_colour <- "honeydew2"
+
+format_confmat_ft <- function(x){
+    x %>%
+    rownames_to_column("True behaviour") %>%
+    flextable() %>%
+    align(align = "right", part="all") %>%
+    line_spacing(space = 1.25, part = "all") %>%
+    font(fontname="Calibri", part="all") %>%
+    # ---- Rename and format headings ----
+    add_header_row(values = c("", "Predicted behaviour"),
+                   colwidths = c(1, ncol(x))) %>%
+    align(i=1, align="center", part="header") %>%
+    valign(i=2, valign="bottom", part="header") %>%
+    bold(i=1, part="header") %>%
+    bold(i=2, j=1, part="header") %>%
+    set_header_labels(values = list(fly = "FLY",
+                                    `forage or drink` = "FORAGE",
+                                    preen = "PREEN",
+                                    rest = "REST",
+                                    vigilant = "VIGIL",
+                                    `walk or run` = "WALK",
+                                    other = "OTHER",
+                                    `forward aggressive` = "AGGR",
+                                    `dynamic squat` = "DYN",
+                                    `static squat`="STAT",
+                                    `copulation attempt` = "COPUL",
+                                    `mounting male` = "MOUNT",
+                                    `being mounted` = "MOUNTED")) %>%
+    # ---- Remove border from top left cell ----
+    border(i=1,j=1, part="header",border = fp_border(color="white")) %>%
+    border(i=1, part="header",border.top = fp_border(color="black")) %>%
+    # ---- Set width ----
+    width(width=(land_width-confmat_beh_col_width)/ncol(x), unit="cm") %>%
+    width(j=1, confmat_beh_col_width, "cm") %>%
+    # ---- Add italicisation to mating behaviours ----
+    italic(i=2, j=9:14, part="header") %>%
+    italic(i=8:13, j=1, part="body")%>%
+    # ---- Format totals ----
+    bold(i=nrow(x), part="body") %>%
+    bold(j=ncol(x)+1, part="all") %>%
+    colformat_num(j = c("Total"), digits=0) %>%
+    # ---- Add shading for true positives ----
+    highlight(i = 1, j = 2, part = "body", color=true_pos_colour) %>%
+    highlight(i = 2, j = 3, part = "body", color=true_pos_colour) %>%
+    highlight(i = 3, j = 4, part = "body", color=true_pos_colour) %>%
+    highlight(i = 4, j = 5, part = "body", color=true_pos_colour) %>%
+    highlight(i = 5, j = 6, part = "body", color=true_pos_colour) %>%
+    highlight(i = 6, j = 7, part = "body", color=true_pos_colour) %>%
+    highlight(i = 7, j = 8, part = "body", color=true_pos_colour) %>%
+    highlight(i = 8, j = 9, part = "body", color=true_pos_colour) %>%
+    highlight(i = 9, j = 10, part = "body", color=true_pos_colour) %>%
+    highlight(i = 10, j = 11, part = "body", color=true_pos_colour) %>%
+    highlight(i = 11, j = 12, part = "body", color=true_pos_colour) %>%
+    highlight(i = 12, j = 13, part = "body", color=true_pos_colour) %>%
+    highlight(i = 13, j = 14, part = "body", color=true_pos_colour)
+}
+```
+
+```{r Create RF confmat table, width=50}
+# ---- Create confusion matrix ----
+# NOTE: Rows (first) are truth, Columns (second) are predictions
+rf_confmat <- as.data.frame.matrix(table(rf_loso_preds$truth_beh, rf_loso_preds$pred_beh))
+
+# ---- Refine confusion matrix ----
+rf_confmat <- rf_confmat %>%
+    filter(row.names(rf_confmat)!="mating behaviours" &
+               row.names(rf_confmat)!="rest/vigilant") %>%
+    select(!c("mating behaviours","rest/vigilant"))
+
+rf_confmat <- bind_rows(rf_confmat,
+                        rf_confmat %>% summarise_all(sum)) %>%
+    mutate(Total=rowSums(.))
+
+row.names(rf_confmat)[nrow(rf_confmat)] <- "Total"
+
+rf_confmat_flex <- format_confmat_ft(rf_confmat)
+
+rf_confmat_flex
+```
+
+```{r Create hmm confmat table, width=50}
+# ---- Create confusion matrix ----
+# NOTE: Rows (first) are truth, Columns (second) are predictions
+hmm_confmat <- as.data.frame.matrix(table(hmm_loso_preds$truth_beh, hmm_loso_preds$pred_beh))
+
+# ---- Refine confusion matrix ----
+hmm_confmat <- hmm_confmat %>%
+    filter(row.names(hmm_confmat)!="mating behaviours" &
+               row.names(hmm_confmat)!="rest/vigilant") %>%
+    select(!c("mating behaviours","rest/vigilant")) 
+
+hmm_confmat <- bind_rows(hmm_confmat, 
+                        hmm_confmat %>% summarise_all(sum)) %>%
+    mutate(Total=rowSums(.))
+
+row.names(hmm_confmat)[nrow(hmm_confmat)] <- "Total"
+
+hmm_confmat_flex <- format_confmat_ft(hmm_confmat)
+
+hmm_confmat_flex
+```
+
+```{r Create NN confmat table, width=50}
+# ---- Create confusion matrix ----
+# NOTE: Rows (first) are truth, Columns (second) are predictions
+nn_confmat <- as.data.frame.matrix(table(nn_loso_preds$truth_beh, nn_loso_preds$pred_beh))
+
+# ---- Refine confusion matrix ----
+nn_confmat <- nn_confmat %>%
+    filter(row.names(nn_confmat)!="mating behaviours" &
+               row.names(nn_confmat)!="rest/vigilant") %>%
+    select(!c("mating behaviours","rest/vigilant"))
+
+nn_confmat <- bind_rows(nn_confmat,
+                        nn_confmat %>% summarise_all(sum)) %>%
+    mutate(Total=rowSums(.))
+
+row.names(nn_confmat)[nrow(nn_confmat)] <- "Total"
+
+nn_confmat_flex <- format_confmat_ft(nn_confmat)
+
+nn_confmat_flex
+```
+
+```{r Save confusion matrix table}
+save_as_docx(`HMM confusion matrix` = hmm_confmat_flex, 
+             `RF confusion matrix` = rf_confmat_flex,
+             `NN confusion matrix` = nn_confmat_flex,
+             path = here(output_dir, "confusion_matrices.docx"), 
+             align = "left")
+```
+
+# Upsampling and transition table (Table 5)
+
+```{r Import cross-validation results}
+rf_all_cv <- fread(here(input_dir, "RF_all-CV-macro-metrics_original-classes.csv"))
+```
+
+```{r Filter rf cv results}
+# LSIO models with same hyperparameters as top LSIO
+rf_sub_cv <- rf_all_cv %>% 
+    filter(min_n==1 & mtry==2) %>%
+    filter(grepl("LSIO",model_id))
+
+# Either same upsampling OR same transition treatment
+rf_sub_cv <- rf_sub_cv %>%
+    filter(grepl("sm10", model_id)|grepl("Tin", model_id))
+
+# Format with mean and sd
+up_tr_table <- rf_sub_cv %>%
+    mutate(all_prec=format_mean_sd(precision, precision_sd),
+           all_recall=format_mean_sd(recall, recall_sd),
+           all_fmeas=format_mean_sd(f_meas, f_meas_sd),
+           mat_prec=format_mean_sd(precision_mat, precision_sd_mat),
+           mat_recall=format_mean_sd(recall_mat, recall_sd_mat),
+           mat_fmeas=format_mean_sd(f_meas_mat, f_meas_sd_mat)) %>%
+    select(model_id, all_prec:mat_fmeas)
+
+# Replicate the best model (useful further below) (using row number here)
+up_tr_table <- rbind(up_tr_table, up_tr_table[3,])
+```
+
+```{r Reorder table}
+up_tr_table$order <- c(1,2,4,5,7,3,6)
+up_tr_table <- up_tr_table %>% arrange(order)
+up_tr_table$category <- c(rep("Upsampling",4),rep("Transitions",3))
+```
+
+```{r Format upsampling transition table as flextable}
+# ~~~~~ FORMAT UPSAMPLE/TRANSITION TABLE ---------------------------------------
+first_col_width <- 0.1
+
+up_tr_table_flex <- 
+    # ---- Basic formatting ----
+    up_tr_table %>%
+    select(-order) %>%
+    as_grouped_data(groups="category") %>%
+    flextable() %>%
+    align(align = "left", part="all") %>%
+    line_spacing(space = 1.25, part = "all") %>%
+    add_header_row(values = c("","All behaviours", "Mating behaviours"),
+                   colwidths = c(2, 3, 3)) %>%
+    bold(part="header") %>%
+    font(fontname="Calibri", part="all") %>%
+    width(width=(port_width-first_col_width)/ncol(up_tr_table), unit="cm") %>%
+    width(j=1, first_col_width, "cm") %>%
+    # ---- Rename and format headings ----
+    set_header_labels(category="") %>%
+    bold(i = ~ !is.na(category), part="body") %>%
+    set_header_labels(values = list(model_id = "Model",
+                                    all_prec = "Precision",
+                                    all_recall = "Sensitivity",
+                                    all_fmeas = "F1-score",
+                                    mat_prec = "Precision",
+                                    mat_recall = "Sensitivity",
+                                    mat_fmeas = "F1-score")) %>%
+    merge_at(i=1, j=1:8, part="body") %>% # Upsampling
+    merge_at(i=6, j=1:8, part="body")  # Inclusion of transitions
+
+up_tr_table_flex
+```
+
+```{r Save upsampling and transitions table}
+save_as_docx(up_tr_table_flex, path = here(output_dir,"upsampling_transitions_table.docx"), 
+             align = "left")
+```
