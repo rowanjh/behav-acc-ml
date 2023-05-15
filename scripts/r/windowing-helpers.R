@@ -1,3 +1,16 @@
+# ~~~~~~~~~~~~~~~ Script overview ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
+#' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
+#' using accelerometry and machine learning: challenges and opportunities.
+#' 
+#' https://github.com/rowanjh/behav-acc-ml
+#'
+#' Purpose: 
+#'      Helper functions for implementing sliding windows. See windowing.R
+#'
+#' Date created:
+#'      May 2, 2023
+#'      
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 library(dtw)
 library(moments)
 library(data.table)

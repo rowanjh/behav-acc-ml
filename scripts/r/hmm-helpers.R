@@ -1,3 +1,17 @@
+# ~~~~~~~~~~~~~~~ Script overview ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
+#' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
+#' using accelerometry and machine learning: challenges and opportunities.
+#' 
+#' https://github.com/rowanjh/behav-acc-ml
+#'
+#' Purpose: 
+#'      Helper functions for hidden markov models. See hmm.R
+#'
+#' Date created:
+#'      May 2, 2023
+#' 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 #' Get transition matrix from class label sequence
 #'
 #' @param class_seq (factor) a sequence of temporally consecutive labels 

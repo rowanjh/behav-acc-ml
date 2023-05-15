@@ -1,3 +1,16 @@
+# ~~~~~~~~~~~~~~~ Script overview ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
+#' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
+#' using accelerometry and machine learning: challenges and opportunities.
+#' 
+#' https://github.com/rowanjh/behav-acc-ml
+#'
+#' Purpose: 
+#'      Helper functions for random forest models. See rf.R
+#'
+#' Date created:
+#'      May 2, 2023
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 #' Create cross-validation splits from a manual specification
 #' 
 #' Adapted version of rsample::vfold_cv that allows specification of which rows

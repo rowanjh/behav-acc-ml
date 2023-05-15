@@ -1,9 +1,22 @@
+# ~~~~~~~~~~~~~~ Script overview ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
+#' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
+#' using accelerometry and machine learning: challenges and opportunities.
+#' 
+#' https://github.com/rowanjh/behav-acc-ml
+#'
+#' Purpose: 
+#'       Utility functions used in various parts of the project
+#' 
+#' Date Created: 
+#'      May 2, 2023
+#'      
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 #' Round fractional seconds and print
 #' 
-#' Due to floating point precision and the way that print methods round 
-#' fractional seconds, datetimes can get messed up. The issue occurs when saving
-#' a POSIXct column to csv - values are converted to character first, and the
-#' fractional seconds are rounded down. See more detail in this thread
+#' Due to floating point precision and the way that print methods round down
+#' fractional seconds, datetimes can get messed up when converted from POSIXct 
+#' to character (e.g. when exporting to csv). See more detail in this thread
 #' https://stackoverflow.com/questions/7726034/how-r-formats-posixct-with-fractional-seconds
 #' This function is still buggy sometimes but is an improvement.
 #' 

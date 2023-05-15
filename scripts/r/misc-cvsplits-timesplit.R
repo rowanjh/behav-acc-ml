@@ -1,6 +1,45 @@
-# This script creates a stratified split of the data, but instead of randomly
-# allocating windows to each fold, the split will be based on time. Nearby
-# behaviours are not as independent and are kept together, to reduce data leakage
+# ~~~~~~~~~~~~~~ Script overview ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
+#' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
+#' using accelerometry and machine learning: challenges and opportunities.
+#' 
+#' https://github.com/rowanjh/behav-acc-ml
+#'
+#' Purpose: 
+#'       This script creates train/test sets and cross-validation folds using 
+#'       the time stratification method.
+#' 
+#' Notes:
+#'      In time stratification, the data from a given bird is split between the
+#'      train and test sets according to timestamp. Instead of randomly 
+#'      allocating windows to each set, earlier behaviours are use for training,  
+#'      and later behaviours are used for testing. This gives protection against
+#'      overoptimistic performance estimates that could arise if behaviours 
+#'      closer in time are more similar.
+#'      
+#'      We implemented time stratification as follows: For the train/test split, 
+#'      each behaviour/bird combination is split independently. For a given 
+#'      behaviour for a given bird, the earliest 70% of windows will be 
+#'      attempted to be assigned to train, and the latest 30% to test. There is 
+#'      a constraint that windows sharing the same behaviour event id must be 
+#'      assigned to the same fold. This way consecutive windows of the same 
+#'      behaviour (e.g. when the bird is resting for multiple windows) are 
+#'      treated as not independent, and must be kept together.
+#'      
+#'      For cross-validation we split the training set into 10 folds each with a 
+#'      roughly equal number of windows of each behaviour. Each behaviour for 
+#'      each bird is split into 10 chunks based on datetime quantiles. The 
+#'      timestamp or temporal order of chunks is not considered beyond this 
+#'      point, and event id is ignored. The quantiled chunks are simply split 
+#'      into folds to roughly balance the number of behaviours in each fold
+#'             
+#' Date Created: 
+#'      May 2, 2023
+#' 
+#' Output:
+#'      Specification of the time-stratification folds exported to:
+#'      ./config/timesplit-folds.csv
+#'      
+# ~~~~~~~~~~~~~~~ Load packages & Initialization ~~~~~~~~~~~~~~~~~~~~~~~~----
 library(here)
 library(data.table, include.only = c("fread", "fwrite"))
 library(dplyr)
@@ -11,84 +50,42 @@ library(glue)
 dat <- fread(here("data", "windowed", "windowed-data.csv"), data.table = FALSE)
 
 # ---- Load and prep dataset ----
-# Split by ruff_id and behaviour
+# Create column to easily split by ruff_id and behaviour (used later to join)
 dat <- dat %>% 
-    unite(bird_beh, ruff_id, majority_behaviour, remove = FALSE) %>% 
+    unite(bird_beh, ruff_id, majority_behaviour, remove = FALSE) |>
     arrange(ruff_id, window_start)
 
-# Stratification works as follows: For the train/test split, each behaviour/bird
-# combination will be split independently. For a given behaviour for a given bird,
-# 70% of windows will be attempted to be allocated to train, and 30% to test. 
-# The allocation will be based on time: the 30% of points with the latest timestamps
-# will go into the test set. For CV, an equal number of windows will be attempted
-# to be put in each fold. They will be split into 10 chunks based on datetime
-# quantiles, and then each of those chunks will be put into one of the 10 folds.
-# It doesn't matter which fold per se, different assignments may be attempted to 
-# balance the overall number of behaviours in each fold across all birds.
-
-# Window ID is not necessary in order with respect to datetime. Within a segment
-# yes, but not across segments.
-# 
-# unique(dat$bird_beh)
-# 
-# quantiles <- dat %>% group_by(bird_beh) %>%
-#     summarise(n = n(),
-#               q1 = quantile(window_start, 0.1),
-#               q2 = quantile(window_start, 0.2),
-#               q3 = quantile(window_start, 0.3),
-#               q4 = quantile(window_start, 0.4),
-#               q5 = quantile(window_start, 0.5),
-#               q6 = quantile(window_start, 0.6),
-#               q7 = quantile(window_start, 0.7),
-#               q8 = quantile(window_start, 0.8),
-#               q9 = quantile(window_start, 0.9)
-#     )
-# 
-# test <- dat %>% group_by(bird_beh) %>%
-#     mutate(q = ntile(window_start, 10),
-#            count = n()) %>%
-#     select(ruff_id, bird_beh, window_start, q, count, beh_event_id) %>%
-#     arrange(ruff_id, bird_beh, window_start)
-# test %>%
-#     group_by(bird_beh, q) %>%
-#     summarise(n = n()) %>%
-#     pivot_wider(names_from = q, values_from = n)
-
-
-# Try to split by event id instead
-# Ignore for transition events, lump the epoch in with the previous event. 
+# Transition windows have 2+ IDs. Only only use the first
 splitdat <- dat %>% 
-    mutate(event = gsub("_.*", "", beh_event_id),
-           event = if_else(event == "NA", gsub(".*_", "", beh_event_id), event)) %>%
-    unite(bird_beh, ruff_id, majority_behaviour, remove = FALSE) %>% 
-    arrange(ruff_id, window_start)
+    # Only keep the first event id, exclude cases where first event is NA
+    mutate(event = gsub("_.*", "", beh_event_id), 
+           event = if_else(event == "NA", gsub(".*_", "", beh_event_id), event))
+
+# ---- Train-test split ----
 
 splitdat <- splitdat %>%
+    # Group by bird, behaviour, and event
     group_by(bird_beh, event) %>%
-    # number of windows for this event. Start time of this event
+    # Number of windows for each event.
     summarise(n_windows = n(), time = min(window_start)) %>%
     arrange(bird_beh, time) %>% 
     group_by(bird_beh) %>%
+    # Time at which 70% of events are earlier, and 30% later (by bird and beh)
     mutate(t70 = quantile(time, 0.7))
 
-# Some duplicate events got made - these are transitions, not a problem. Just 
-# need to ensure bird_beh AND event are used when joining back to the orig data.
-# splitdat[duplicated(splitdat$event) | duplicated(splitdat$event, fromLast = TRUE),] %>%
-#     arrange(event) %>% View()
-# Do train-test split first
+# # Some duplicate events got made - these are transitions, not a problem. Just 
+# # need to ensure bird_beh AND event are used when joining back to the orig data.
+# splitdat[duplicated(splitdat$event) | 
+#              duplicated(splitdat$event, fromLast = TRUE),] |>
+#     arrange(event)
+
+# Create train and test folds
 dat_train <- splitdat %>% filter(time < t70) %>% select(-t70)
 dat_test <- splitdat %>% filter(time >= t70) %>% select(-t70)
 
-# # Split train dat into 10-fold CV
-# dat_train <- dat_train %>% 
-#     group_by(bird_beh) %>%
-#     mutate(q = ntile(time, 10), 
-#            birdbeh_total_events = n(),
-#            birdbeh_total_windows = sum(n_windows),
-#            cumsum_n_windows = cumsum(n_windows)) 
-
-# Break it up into different events. Don't worry about weighting events, just
-# attempt to balance at the end if the distribution across folds ends up unbalanced.
+# ---- Create 10 cross-validation folds ----
+#' Break up the training set into 10 quantiles, for each bird and behaviour.
+#' Disregard event id for now.
 cv_split <- dat_train %>% 
     group_by(bird_beh) %>%
     arrange(bird_beh, time) %>%
@@ -108,6 +105,9 @@ assign_random_fold <- function(df){
     }
     return(df)
 }
+
+# I tried some different seeds until I got a split that looked reasonably 
+# balanced
 set.seed(321)
 event_fold_assignments <- map(split(cv_split, ~bird_beh), assign_random_fold) %>% bind_rows()
 
@@ -128,6 +128,7 @@ dat_with_fold <- dat %>%
 x <- table(dat_with_fold$majority_behaviour, dat_with_fold$fold) %>% as.data.frame() %>%
     pivot_wider(values_from = Freq, names_from = Var2)
 
+# A measure of variation between folds in sample size
 x$pct_deviance <- apply(x[,-1], 1, max) / apply(x[,-1], 1, min) * 100
 x
 max(x$pct_deviance)
