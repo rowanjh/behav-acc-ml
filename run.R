@@ -11,22 +11,24 @@
 #'      
 #'      Code is provided for all steps in the analyses, including:
 #'      1. Calibrations and time synchronisation of raw data
-#'      2. Windowing data & feature computation
+#'      2. Windowing data & feature extraction
 #'      3. Training hidden markov models, random forests, and neural networks
 #'      4. Evaluating results
 #'
 #' Notes: 
-#'      Package management with Renv
+#'      Package management with Renv. Install all required R packages by running
+#'      renv::restore() 
 #'      
 #' Date created:
 #'      May 2, 2023
 #'      
-# ~~~~~~~~~~~~~~  Run Code ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
+# ~~~~~~~~~~~~~~  Analysis Code ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~----
 library(here)
+library(rmarkdown)
 
 ## ---- Download data ----
 download.file("https://zenodo...", here("data", "raw", "ruff-data-db.zip"))
-download.file("https://zenodo...", here("data", "raw", "ruff-data-misc.zip"))
+download.file("https://zenodo...", here("data", "raw", "ruff-data-other.zip"))
 
 unzip(here("data","raw","ruff-data-db.zip"), here("data","raw"))
 unzip(here("data","raw","ruff-data-misc.zip"), here("data","raw"))
@@ -34,10 +36,16 @@ unzip(here("data","raw","ruff-data-misc.zip"), here("data","raw"))
 ## ---- Clean data ----
 
 source(here("scripts", "r", "cleaning.R"))
+render(here("scripts", "r", "cleaning-qa.Rmd"), 
+       output_dir = here("outputs", "qa"),
+       output_file = "cleaning-qa.html")
 
 ## ---- Window data ----
 
 source(here("scripts", "r", "windowing.R"))
+render(here("scripts", "r", "windowing-qa.Rmd"), 
+       output_dir = here("outputs", "qa"),
+       output_file = "windowing-qa.html")
 
 ## ---- Split data ----
 #' The leave-some-individuals-out (LSIO) and time-based splits need to be 
@@ -72,4 +80,13 @@ source(here("scripts", "r", "runRF.R"))
 #' available. See instructions for installation and running in ./scripts/py/main.py
 
 ## ---- Evaluations ----
+render(here("scripts", "r", "eval-generate-performance-metrics.Rmd"), 
+       output_dir = here("outputs", "eval-results"),
+       output_file = "eval-generate-performance-metrics.html")
+render(here("scripts", "r", "eval-calculate-correlation-coefficients.Rmd"), 
+       output_dir = here("outputs", "eval-results"),
+       output_file = "eval-calculate-correlation-coefficients.html")
+render(here("scripts", "r", "eval-creating-tables-and-figures.Rmd"), 
+       output_dir = here("outputs", "tables-and-figures"),
+       output_file = "eval-creating-tables-and-figures.html")
 
