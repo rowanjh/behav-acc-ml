@@ -24,7 +24,7 @@ output:
 In the first code chunk, set "behaviours" to either "all" (to get metrics using all original classes) or "reduced" (to get metrics using reduced classes).
 
 ```{r Evaluation settings}
-behaviours <- "all"
+behaviours <- "reduced"
 
 if(behaviours=="reduced") {
     output_suffix <- "reduced-classes"
@@ -114,7 +114,11 @@ calc_recall <- function(true_pos, false_neg){
 }
 
 calc_fmeas <- function(precision, recall) {
-    f_meas <- if_else(precision==0 | recall==0, 0,
+    f_meas <- if_else(recall==0, 0,
+                      # if recall is 0, then true_pos == 0 and false_neg !=0
+                      # in other words, there were real instances of the 
+                      # behaviour that were not detected by the model.
+                      # In such cases, fmeasure should = 0 even if precision is NA
                       2*(precision*recall)/(precision+recall)
     )
 }
@@ -135,7 +139,6 @@ calc_class_metrics <- function(df, truth, estimate) {
     FP <- count_FP(df, truth, estimate)
     
     class_metrics <- full_join(TP_FN, FP, by='behaviour') %>%
-        replace(is.na(.), 0) %>%
         mutate(true_neg = nrow(df) - (true_pos + false_pos + false_neg),
                n=nrow(df),
                precision = calc_precision(true_pos, false_pos),
@@ -145,41 +148,28 @@ calc_class_metrics <- function(df, truth, estimate) {
 }
 
 calc_macro_metrics <- function(class_metrics,target_behaviours=NA,
-                               group_folds=TRUE, n_predictions="grouped") {
+                               group_folds=TRUE) {
     # calculates macro-averaged metrics across classes
     # class_metrics is df with true_pos, false_pos, true_neg and false_neg for each behaviour
     # group_folds = TRUE: metrics calculated for each unique fold in column 'fold'
     # group_folds = FALSE: metrics calculated across whole dataframe
-    # if n_predictions = grouped, get count for each fold to calculate n_predictions
-    # if n_predictions = ungrouped, n for class metrics is same in all rows (can use any without grouping)
     if(!is.na(target_behaviours)[1]) {
         class_metrics <- class_metrics %>%
             filter(behaviour %in% target_behaviours)
     }
-    if(group_folds==TRUE) {
+    if(group_folds) {
         macro_metrics <- class_metrics %>%
             group_by(fold) %>%
-            summarise(n_predictions=first(n),
-                      true_pos=sum(true_pos, na.rm=T),
+            summarise(true_pos=sum(true_pos, na.rm=T),
                       precision=mean(precision, na.rm=T),
                       recall=mean(recall, na.rm=T),
-                      f_meas=mean(f_meas, na.rm=T),
-                      accuracy=true_pos/n_predictions)
-    }
-    if(group_folds==FALSE) {
-        if(n_predictions=="grouped") {
-            fold_summary <- class_metrics %>% group_by(fold) %>% summarise(n=n())
-            n_predictions <- sum(fold_summary$n)
-        }
-        if(n_predictions=="ungrouped") {
-            n_predictions <- first(class_metrics$n)
-        }
+                      f_meas=mean(f_meas, na.rm=T))
+    } else {
         macro_metrics <- class_metrics %>%
             summarise(true_pos=sum(true_pos, na.rm=T),
                       precision=mean(precision, na.rm=T),
                       recall=mean(recall, na.rm=T),
-                      f_meas=mean(f_meas, na.rm=T),
-                      accuracy=true_pos/n_predictions)
+                      f_meas=mean(f_meas, na.rm=T))
     }
     return(macro_metrics)
 }
@@ -193,15 +183,12 @@ average_macro_metrics <- function(macro_metrics, multimodel=FALSE){
         summarise(precision_mean=mean(precision, na.rm=TRUE),
                   recall_mean=mean(recall, na.rm=TRUE),
                   f_meas_mean=mean(f_meas, na.rm=TRUE),
-                  accuracy_mean=mean(accuracy, na.rm=TRUE),
                   precision_sd=sd(precision,na.rm=TRUE),
                   recall_sd=sd(recall,na.rm=TRUE),
-                  f_meas_sd=sd(f_meas,na.rm=TRUE),
-                  accuracy_sd=sd(accuracy, na.rm=TRUE)) %>%
+                  f_meas_sd=sd(f_meas,na.rm=TRUE)) %>%
         rename(precision=precision_mean, # this is to make combinations easier later
                recall=recall_mean,
-               f_meas=f_meas_mean,
-               accuracy=accuracy_mean)
+               f_meas=f_meas_mean)
     }
     if(multimodel==TRUE){
     summary <- macro_metrics %>%
@@ -209,15 +196,12 @@ average_macro_metrics <- function(macro_metrics, multimodel=FALSE){
         summarise(precision_mean=mean(precision, na.rm=TRUE),
                   recall_mean=mean(recall, na.rm=TRUE),
                   f_meas_mean=mean(f_meas, na.rm=TRUE),
-                  accuracy_mean=mean(accuracy, na.rm=TRUE),
                   precision_sd=sd(precision,na.rm=TRUE),
                   recall_sd=sd(recall,na.rm=TRUE),
-                  f_meas_sd=sd(f_meas,na.rm=TRUE),
-                  accuracy_sd=sd(accuracy, na.rm=TRUE)) %>%
+                  f_meas_sd=sd(f_meas,na.rm=TRUE)) %>%
         rename(precision=precision_mean,
                recall=recall_mean,
-               f_meas=f_meas_mean,
-               accuracy=accuracy_mean)
+               f_meas=f_meas_mean)
     }
     return(summary)
 }
@@ -279,15 +263,11 @@ map_macro_metrics <- function(class_metrics,
     if(multimodel==FALSE & cv==FALSE){
         macro_allbeh <- calc_macro_metrics(class_metrics, 
                                            behaviour_list_all,
-                                           group_folds = FALSE,
-                                           n_predictions = "ungrouped")
+                                           group_folds = FALSE)
         macro_matingbeh <- calc_macro_metrics(class_metrics, 
                                               behaviour_list_mating,
-                                              group_folds = FALSE,
-                                              n_predictions = "ungrouped") %>%
-            rename_with(~paste0(.x, "_mat"), true_pos:accuracy)
-    
-        macro_matingbeh$accuracy_mat <- NULL
+                                              group_folds = FALSE) %>%
+            rename_with(~paste0(.x, "_mat"), true_pos:f_meas)
     
         macro_metrics <- cbind(macro_allbeh, macro_matingbeh)
         return(macro_metrics)
@@ -307,10 +287,7 @@ map_macro_metrics <- function(class_metrics,
             bind_rows(.id = "model_fold") %>%
             mutate(model_id = gsub("_fold.*", "", model_fold)) %>%
             average_macro_metrics(., multimodel=TRUE) %>%
-            rename_with(~paste0(.x, "_mat"), precision:accuracy_sd)
-    
-        macro_matingbeh$accuracy_mat <- NULL
-        macro_matingbeh$accuracy_sd_mat <- NULL
+            rename_with(~paste0(.x, "_mat"), precision:f_meas_sd)
     
         macro_metrics <- full_join(macro_allbeh, macro_matingbeh, by='model_id')
         return(macro_metrics)
@@ -319,18 +296,14 @@ map_macro_metrics <- function(class_metrics,
     if(multimodel==TRUE & cv==FALSE){
         macro_allbeh <- split(class_metrics, by="model_id") %>%
             map(~calc_macro_metrics(.x, behaviour_list_all,
-                                    group_folds=FALSE,
-                                    n_predictions="ungrouped")) %>%
+                                    group_folds=FALSE)) %>%
             bind_rows(.id = "model_id")
         
         macro_matingbeh <- split(class_metrics, by="model_id") %>%
             map(~calc_macro_metrics(.x, behaviour_list_mating,
-                                    group_folds=FALSE,
-                                    n_predictions="ungrouped")) %>%
+                                    group_folds=FALSE)) %>%
             bind_rows(.id = "model_id") %>%
-            rename_with(~paste0(.x, "_mat"), precision:accuracy)
-    
-        macro_matingbeh$accuracy_mat <- NULL
+            rename_with(~paste0(.x, "_mat"), precision:f_meas)
         
         macro_metrics <- full_join(macro_allbeh, macro_matingbeh, by='model_id')
         return(macro_metrics)
@@ -345,10 +318,7 @@ map_macro_metrics <- function(class_metrics,
             map(~calc_macro_metrics(.x, behaviour_list_mating)) %>%
             bind_rows(.id = "fold") %>%
             average_macro_metrics(., multimodel=FALSE) %>%
-        rename_with(~paste0(.x, "_mat"), precision:accuracy_sd)
-        
-        macro_matingbeh$accuracy_mat <- NULL
-        macro_matingbeh$accuracy_sd_mat <- NULL
+        rename_with(~paste0(.x, "_mat"), precision:f_meas_sd)
         
         macro_metrics <- cbind(macro_allbeh, macro_matingbeh)
         return(macro_metrics)
@@ -513,7 +483,8 @@ hmm_test_macro <- map_macro_metrics(hmm_test_class,
            split_type="timesplit")
                                      
 hmm_macro_top <- bind_rows(hmm_cv_macro, hmm_test_macro) %>% 
-    select(model_id, validation_type, everything()) 
+    select(model_id, validation_type, everything()) %>%
+    mutate(model_type="HMM")
 
 hmm_macro_top %>% flextable()
 ```
