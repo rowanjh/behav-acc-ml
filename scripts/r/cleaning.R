@@ -69,12 +69,12 @@ source(here("scripts", "r", "misc-utils.R"))
 # ---- Script Inputs ---
 path_raw_beh       <- here("data", "raw", "ruff_behaviour_tidy_2022-11-16.csv")
 path_deploy_notes  <- here("data", "raw", "logger_deployment_notes.csv")
-path_raw_acc_db    <- here("data", "raw", "ruff-acc-data.db")
+path_raw_acc_db    <- here("data", "raw", "ruff-acc.db")
 path_6O_calib_info <- here("data", "raw", "calibration_recordings_6O_Apr2022.csv")
 dir_acc_calib_data <- here("data", "raw", "6O_calibration_files")
 
-# For development #TODO remove this
-path_raw_acc_db    <- "~/ruff-acc.db"
+# # For development #TODO remove this
+# path_raw_acc_db    <- "~/ruff-acc.db"
 
 # ---- Load deployment notes ---
 deploy_notes <- read.csv(path_deploy_notes)
