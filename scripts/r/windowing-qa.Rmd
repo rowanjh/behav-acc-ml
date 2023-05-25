@@ -32,7 +32,7 @@ processed_data_dir <- here("data", "clean", "data-segments")
 
 # Raw files
 path_raw_acc_db <- here("data", "raw", "ruff-acc.db")
-path_raw_acc_db <- "~/ruff-acc.db" # For development/testing
+# path_raw_acc_db <- "~/ruff-acc.db" # For development/testing
 path_deployment_notes <- here("data", "raw", "logger_deployment_notes.csv")
 
 # Processed files

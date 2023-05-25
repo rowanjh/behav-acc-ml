@@ -1,5 +1,7 @@
 .Rproj.user
 config/
-data/
+data/**/*.csv
+data/**/*.zip
 outputs/
 .vscode
+_uploaded-files/

@@ -30,32 +30,25 @@ library(rmarkdown)
 
 ## ---- Download data ----
 # Download raw data zip into ./data/raw/ directory, and extract.
-# unzip(here("data","raw","data-raw.zip"), exdir = here("data","raw"))
+# unzip(here("data","raw","data-raw-db.zip"), exdir = here("data","raw"))
+# unzip(here("data","raw","data-raw-other.zip"), exdir = here("data","raw"))
 
 ## ---- Clean data ----
 
 source(here("scripts", "r", "cleaning.R"))
 
-# (Optional) quality-assurance notebook
-render(here("scripts", "r", "cleaning-qa.Rmd"), 
-       output_dir = here("outputs", "qa"),
-       output_file = "cleaning-qa.html")
 
 ## ---- Window data ----
 
 source(here("scripts", "r", "windowing.R"))
 
-# (Optional) quality-assurance notebook
-render(here("scripts", "r", "windowing-qa.Rmd"), 
-       output_dir = here("outputs", "qa"),
-       output_file = "windowing-qa.html")
 
 ## ---- Split data ----
 #' The leave-some-individuals-out (LSIO) and time-based splits need to be 
 #' implemented manually. Random stratification is more straightforward and is 
 #' implemented in the rf.R script using the tidymodels functions 
 
-source(here("scripts", "r", "misc-cvsplits-slio.R")) 
+source(here("scripts", "r", "misc-cvsplits-lsio.R")) 
 source(here("scripts", "r", "misc-cvsplits-timesplit.R"))
 
 ## ---- Hidden Markov Models (HMMs) ----
@@ -93,4 +86,15 @@ render(here("scripts", "r", "eval-calculate-correlation-coefficients.Rmd"),
 render(here("scripts", "r", "eval-creating-tables-and-figures.Rmd"), 
        output_dir = here("outputs", "tables-and-figures"),
        output_file = "eval-creating-tables-and-figures.html")
+
+## ---- (Optional) quality-assurance notebooks ----
+# Check output of cleaning.R
+render(here("scripts", "r", "cleaning-qa.Rmd"), 
+       output_dir = here("outputs", "qa"),
+       output_file = "cleaning-qa.html")
+
+# Check output of windowing.R
+render(here("scripts", "r", "windowing-qa.Rmd"), 
+       output_dir = here("outputs", "qa"),
+       output_file = "windowing-qa.html")
 

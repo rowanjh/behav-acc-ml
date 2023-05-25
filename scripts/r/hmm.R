@@ -66,13 +66,13 @@ fold_spec_timesplit <- read.csv(timesplit_fold_spec) |>
 dist_spec <- read.csv(dist_spec_path)
 fcbf_spec <- read.csv(fcbf_spec_path)
 
+# Check if all features have a dist specified
+
 if (!all(fcbf_spec$feat %in% dist_spec$feature)){
     stop(glue("features selected by fcbf but missing from distribution spec: 
               {fcbf_spec$feat[!fcbf_spec$feat %in% dist_spec$feature] |>
                     unique() |> paste(collapse = ', ')}"))
 }
-# Check if all features have a dist specified
-dist_spec
 # ---- Prep dataset for HMM algorithm ---
 dat <- dat |> select(-matches("^beh_(?!event)", perl = TRUE))
 dat <- left_join(dat, fold_spec_LSIO, by = "ruff_id")
@@ -307,7 +307,6 @@ for(i in 1:length(outputs)){
 print("------------Analysis Complete-----------------")
 print(glue("Total Time: {difftime(Sys.time(), log_start_time, units = 'mins') |> round(2)} mins"))
 
-# Save log
 # Quick probe of results
 fs <- data.frame()
 for(i in 1:length(outputs)){
@@ -325,6 +324,13 @@ for(i in 1:length(outputs)){
 lsio_cv_f <- fs |> filter(split == "LSIO") |> pull(f) |> mean() |> round(2)
 ts_cv_f <- fs |> filter(split == "timesplit" & fold != "test") |> pull(f) |> mean() |> round(2)
 ts_test_f <- fs |> filter(split == "timesplit" & fold == "test") |> pull(f) |> mean() |> round(2)
+
+# output a log file: 
+# number of classes
+# Features selected per fold
+# Distributions and transformations for features
+# quick results overview
+# time elapsed
 
 capture.output(
     file = file.path(out_dir, "log.txt"),
@@ -345,9 +351,3 @@ capture.output(
 )
 
 
-# output a log file: 
-# number of classes
-# Features selected per fold
-# Distributions and transformations for features
-# quick results overview
-# time elapsed

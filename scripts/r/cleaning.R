@@ -466,4 +466,5 @@ write.csv(recording_info, outpath_recording_info, row.names = FALSE, na = "")
 write.csv(segment_summary, file = outpath_segment_summary, row.names = FALSE)
 
 print(paste0("Finished data cleaning. Duration: ", 
-             round(Sys.time() - log_start_time, 1), " minutes"))
+             round(difftime(Sys.time(), log_start_time, units = "mins"), 1), 
+             " minutes"))
