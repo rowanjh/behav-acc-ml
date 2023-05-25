@@ -29,7 +29,7 @@ library(here)
 library(rmarkdown)
 
 ## ---- Download data ----
-# Download raw data zip into ./data/raw/ directory, and extract.
+# Download raw data zips into ./data/raw/ directory, and extract.
 # unzip(here("data","raw","data-raw-db.zip"), exdir = here("data","raw"))
 # unzip(here("data","raw","data-raw-other.zip"), exdir = here("data","raw"))
 
