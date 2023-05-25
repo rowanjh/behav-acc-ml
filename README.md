@@ -23,17 +23,21 @@ This analysis uses accelerometry data and machine learning techniques to classif
 2.  Download data-raw.zip into directory './data/raw', extract
 3.  Open script `run.R`. This script gives the overview of all analyses and is the starting point.
 
+## Package management & installation
+
+------------------------------------------------------------------------
+
+This project uses renv for R package management. Launch the .Rproj file, then simply run `renv::restore()` to install all of the correct packages. This requires build tools that allow compilation of packages from source (e.g. Rtools for Windows). renv will only work if the following three files are in the project: `renv/activate.R` `renv.lock`, and `.Rprofile`. 
+
+Neural networks need to be run using python. We recommend a setting up a conda environment and using a GPU if available (see `/scripts/r/py/main.py` for all instructions).
+
 ## Notes
 
 ------------------------------------------------------------------------
 
-This project uses renv for R package management. Any clone of this project will, when first launched, configure itself to use the appropriate version renv as long as the `renv.lock`, `.Rprofile`, and `renv/activate.R` files are in the project. Then run `renv::restore()` to install all of the correct packages.
-
-To run neural networks we recommend a setting up a conda environment and using a GPU (see `/scripts/r/py/main.py` for all instructions).
-
 Some parts of the analysis use parallel loops and can have high memory requirements. Use fewer parallel workers to reduce the memory footprint.
 
-Raw accelerometer data are stored in a large sqlite database (~81GB unzipped), ensure sufficient disk space is available. The database is interfaced and processed through R functions, and intermediate cleaned csv files are produced.
+Raw accelerometer data are stored in a large sqlite database (\~81GB unzipped), ensure sufficient disk space is available. The database is interfaced and processed through R functions, and intermediate cleaned csv files are produced.
 
 ## Project Structure
 
