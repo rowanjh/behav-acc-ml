@@ -97,7 +97,6 @@ order_behaviours <- function(behs) {
                                               "rest",
                                               "vigilant",
                                               "walk or run",
-                                              "other",
                                               "forward aggressive",
                                               "dynamic squat",
                                               "static squat",
@@ -105,7 +104,8 @@ order_behaviours <- function(behs) {
                                               "mounting male",
                                               "being mounted",
                                               "mating behaviours",
-                                              "rest/vigilant"))
+                                              "rest/vigilant",
+                                              "other"))
     return(ordered_behs)
 }
 ```
@@ -186,6 +186,81 @@ beh_flex
 
 ```{r Save behaviour table}
 save_as_docx(beh_flex, path = here(output_dir, "behaviour_summary.docx"), 
+             align = "left")
+```
+
+# Acc recording summary (Table A?)
+
+```{r Import and reformat recording information}
+rec_info <- read.csv(here("data","raw","logger_deployment_notes.csv"))
+
+# Datetimes entered into Excel spreadsheets can be reliable, so reextract release datetime
+rec_info <- rec_info %>%
+    mutate(release_dt=paste(capture_date, release_time))
+
+rec_info <- rec_info %>%
+    rename(ruff_id=ruff_id_number) %>%
+    select(ruff_id, morph, release_dt, recapture_disturbance_start_dt) %>%
+    mutate(start=as.POSIXct(release_dt, format="%d/%m/%Y %H:%M:%S"),
+           end=as.POSIXct(recapture_disturbance_start_dt, format="%d/%m/%Y %H:%M")) %>%
+    mutate(duration=as.numeric(difftime(end, start, units="days")),
+           duration=format(round(duration, 1), nsmall = 1),
+           start=format(start, format='%d.%m.%Y'),
+           end=format(end, format='%d.%m.%Y'))
+    
+rec_info_wide <- rec_info %>%
+    group_by(ruff_id, morph) %>%
+    arrange(desc(start)) %>%
+    slice(seq_len(3)) %>%
+    mutate(recording=paste0("recording", row_number())) %>%
+    select(-release_dt, -recapture_disturbance_start_dt) %>%
+    pivot_wider(id_cols=c(ruff_id, morph),
+                names_from=recording,
+                values_from=c(start, end, duration)) %>%
+    select(ruff_id, morph,
+           start_recording1, duration_recording1,
+           start_recording2, duration_recording2,
+           start_recording3, duration_recording3)
+```
+
+```{r Make recording summary flextable}
+first_col_width=4
+second_col_width=2.6
+
+rec_info_flex <- 
+    # ---- Basic formatting ----
+    rec_info_wide  %>%
+    flextable() %>%
+    # merge_v(j = "behaviour", target = "behaviour", part = "body", combine = FALSE) %>%
+    # valign(valign="top") %>%
+    align(align = "left", part="all") %>%
+    line_spacing(space = 1.25, part = "all") %>%
+    font(fontname="Calibri", part="all") %>%
+    colformat_datetime(na_str="NA") %>%
+    colformat_num(na_str="NA") %>%
+    # ---- Rename and format headings ----
+    set_header_labels(ruff_id="Ruff ID",
+                      morph="Morph",
+                      start_recording1="Start",
+                      duration_recording1="Duration (days)",
+                      start_recording2="Start",
+                      duration_recording2="Duration (days)",
+                      start_recording3="Start",
+                      duration_recording3="Duration (days)") %>%
+   # bold(i = ~ !is.na(behaviour_type), part="body") %>%
+    add_header_row(values = c("","Recording 1", "Recording 2", "Recording 3"),
+                   colwidths = c(2, 2, 2, 2)) %>%
+    bold(part="header") %>%
+    # ---- Set width ----
+    width(width=(port_width-first_col_width-second_col_width)/(ncol(rec_info_wide)-2), unit="cm") %>%
+    width(j=1, first_col_width, "cm") %>%
+    width(j=2, second_col_width, "cm")
+
+rec_info_flex
+```
+
+```{r Save acc recording table}
+save_as_docx(rec_info_flex, path = here(output_dir, "acc_recording_summary.docx"), 
              align = "left")
 ```
 
@@ -301,6 +376,7 @@ class_reduc <- class_reduc %>%
 
 class <- full_join(class_og, class_reduc)
 ```
+
 ```{r Summarise class metrics}
 class_summary <- class %>%
     mutate(split_val = paste(split_type, validation_type),
@@ -374,8 +450,6 @@ class_table_flex <-
     select(!metric) %>%
     as_grouped_data(groups="behaviour_type") %>%
     flextable() %>%
-    # merge_v(j = "behaviour", target = "behaviour", part = "body", combine = FALSE) %>%
-    # valign(valign="top") %>%
     align(align = "left", part="all") %>%
     line_spacing(space = 1.25, part = "all") %>%
     font(fontname="Calibri", part="all") %>%
@@ -698,7 +772,7 @@ ggsave(here(output_dir,"correlation_plots.png"), plot=grid_cor_plots2,
        width=13.8, height=21.5, units="cm", dpi=600)
 ```
 
-# Confusion matrices (Table 5, Supplementary Tables)
+# Confusion matrices (Table A5, Supplementary Tables)
 
 ```{r Gather predictions for confusion matrices}
 rf_cv_preds <- read.csv(here(input_dir, "RF_best-CV-predictions_original-classes.csv"))
