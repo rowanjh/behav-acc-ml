@@ -108,6 +108,37 @@ order_behaviours <- function(behs) {
                                               "other"))
     return(ordered_behs)
 }
+
+rename_ids <- function(ids) {
+    new_ids <- ids %>%
+        str_replace("1681", "I1") %>% # orange-faced sweeney
+        str_replace("1331", "I2") %>% # tiger white-bill
+        str_replace("1361", "I3") %>% # foxy dalmation
+        str_replace("1333", "I4") %>% # grey tabby
+        str_replace("1326", "S1") %>% # snow grey
+        str_replace("1301", "S2") %>% # lassie
+        str_replace("1368", "S3") %>% # bald eagle
+        str_replace("G20-0529-B6.5", "S4") %>% # ginger tabby
+        str_replace("G20-0529", "S4") %>% # ginger tabby
+        str_replace("952", "F1") %>% # pink faeder
+        str_replace("1372", "F2") %>% # yellow faeder
+        str_replace("G20-0055-B6.5", "S5") %>% # mustard-white
+        str_replace("1399", "I5") %>% # dark dalmation
+        str_replace("7-04-105", "I6") %>% # dark brown-scarf
+        str_replace("G20-0071-B6.5", "S6") %>% # pale-head tiger
+        str_replace("G20-0059-B6.5", "S7") # pale-head dalmation
+    return(new_ids)
+}
+
+order_ids <- function(ids) {
+    ordered_ids <- ordered(ids, 
+                            levels = c("I1","I2","I3","I4",
+                                       "S1","S2","S3", "S4",
+                                       "F1","F2",
+                                       "I5","I6","S5","S6","S7")
+    )
+    return(ordered_ids)
+}
 ```
 
 # Behaviour summary (Table 1)
@@ -187,6 +218,93 @@ beh_flex
 ```{r Save behaviour table}
 save_as_docx(beh_flex, path = here(output_dir, "behaviour_summary.docx"), 
              align = "left")
+```
+
+## Behaviour summary by individual (Table A?)
+
+```{r Behaviour counts by individual}
+beh_ind <- windowed_dat %>%
+    group_by(majority_behaviour, ruff_id) %>%
+    rename(Behaviour = majority_behaviour) %>%
+    summarise(`total duration (s)`=n(),
+              `n bouts`=n_distinct(beh_event_id))
+
+beh_ind$ruff_id <- rename_ids(beh_ind$ruff_id)
+beh_ind$ruff_id <- order_ids(beh_ind$ruff_id)
+beh_ind <- beh_ind %>% arrange(ruff_id)
+beh_ind$Behaviour <- rename_behaviours(beh_ind$Behaviour)
+beh_ind$Behaviour <- order_behaviours(beh_ind$Behaviour)
+```
+
+```{r Format individual counts}
+beh_ind_wide <- beh_ind %>%
+    select(!`n bouts`) %>%
+    pivot_wider(.,
+                names_from = ruff_id,
+                values_from = `total duration (s)`)
+
+beh_ind_wide$Behaviour <- rename_behaviours(beh_ind_wide$Behaviour)
+beh_ind_wide$Behaviour <- order_behaviours(beh_ind_wide$Behaviour)
+beh_ind_wide <- beh_ind_wide %>% 
+    arrange(Behaviour) %>%
+     mutate_all(., ~replace_na(.,0))
+beh_ind_wide
+```
+```{r Create flextable for individual behaviours}
+beh_col_width <- 3.5
+
+beh_ind_flex <- beh_ind_wide %>%
+    flextable() %>%
+    align(align = "left", part="all") %>%
+    # colformat_double(j=4,
+    #                  digits=2) %>%
+    # align(j=3:5, align="right", part="all") %>%
+    # valign(valign="top", part="body") %>%
+    line_spacing(space = 1.5, part = "all") %>%
+    font(fontname="Calibri", part="all") %>%
+    # ---- Rename and format headings ----
+    bold(part="header") %>%
+    # ---- Set width ----
+    width(width=(land_width-beh_col_width)/(ncol(beh_ind_wide)-1), unit="cm") %>%
+    width(j=1, beh_col_width, "cm")
+
+beh_ind_flex
+```
+
+```{r Format individual events}
+event_ind_wide <- beh_ind %>%
+    select(!`total duration (s)`) %>%
+    pivot_wider(.,
+                names_from = ruff_id,
+                values_from = `n bouts`)
+
+event_ind_wide$Behaviour <- rename_behaviours(event_ind_wide$Behaviour)
+event_ind_wide$Behaviour <- order_behaviours(event_ind_wide$Behaviour)
+event_ind_wide <- event_ind_wide %>% 
+    arrange(Behaviour) %>%
+     mutate_all(., ~replace_na(.,0))
+event_ind_wide
+```
+
+```{r Create flextable for individual behaviours}
+beh_col_width <- 3.5
+
+event_ind_flex <- event_ind_wide %>%
+    flextable() %>%
+    align(align = "left", part="all") %>%
+    # colformat_double(j=4,
+    #                  digits=2) %>%
+    # align(j=3:5, align="right", part="all") %>%
+    # valign(valign="top", part="body") %>%
+    line_spacing(space = 1.5, part = "all") %>%
+    font(fontname="Calibri", part="all") %>%
+    # ---- Rename and format headings ----
+    bold(part="header") %>%
+    # ---- Set width ----
+    width(width=(land_width-beh_col_width)/(ncol(event_ind_wide)-1), unit="cm") %>%
+    width(j=1, beh_col_width, "cm")
+
+event_ind_flex
 ```
 
 # Acc recording summary (Table A?)
