@@ -53,7 +53,7 @@ This table contains raw accelerometer data from deployments on Ruffs. Each row r
 This table is a simple reference for the recording ID codes. Simplified `id` codes are used in the acc table to reduce storage requirements, which are here matched to the full `recording_id` used in other data sources throughout the project.
 
 | Column       | Description                                                  |
-|---------------------------------------|---------------------------------|
+|------------------|------------------------------------------------------|
 | id           | unique code representing recording ID in the 'acc' table.    |
 | recording_id | the full recording ID (matches logger_deployment_notes.csv)  |
 | filename     | source file used for database import (not in public dataset) |
@@ -133,7 +133,7 @@ This file includes bird behavioural data, scored from videos using BORIS softwar
 This file gives details of each accelerometer recording used for 6-orientation (6O) calibration. Calibrations were performed during a short recording separate to the main deployment of accelerometers on birds.
 
 | Column                        | Description                                     |
-|---------------------------------------|---------------------------------|
+|----------------------------|--------------------------------------------|
 | logger_id                     | unique identifier for each accelerometer device |
 | model                         | model of accelerometer                          |
 | date_fully_charged            | date when accelerometer was charged             |
@@ -165,7 +165,7 @@ This file gives details of each accelerometer recording used for 6-orientation (
 | general_notes                 | notes                                           |
 | other_notes                   | notes                                           |
 
-### 6O_calibration_files
+### 6O_calibration_files {#6o_calibration_files}
 
 This directory contains .csv files with raw accelerometer data recorded during 6-orientation (6O) calibration. Recordings are at 50Hz, and each row represents a single sample (one row per 0.02 second interval). Times are derived from the accelerometer clock, so are subject to clock drift and may not align with standard time. Additional information about each accelerometer recording is given in `calibration_recordings_6O_Apr2022.csv`. Filenames have the following format:
 
