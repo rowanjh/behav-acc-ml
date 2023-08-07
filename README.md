@@ -2,7 +2,9 @@
 
 ------------------------------------------------------------------------
 
-This is the repository for: "Quantifying mating behaviour using accelerometry and machine learning: challenges and opportunities" *Unpublished manuscript*
+This is the repository for the following paper:
+
+`Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour using accelerometry and machine learning: challenges and opportunities. Animal Behaviour, 2023`
 
 # Overview
 
@@ -15,13 +17,21 @@ This analysis uses accelerometry data and machine learning techniques to classif
 3.  Training hidden Markov models, random forests, and neural networks
 4.  Evaluating model performance
 
+The dataset is available from a repository on [Edmond](https://edmond.mpdl.mpg.de/privateurl.xhtml?token=3c5da533-d851-4988-994c-f984c5f1b1a4) (<doi:10.17617/3.KERIBB>)
+
 ## Instructions
 
 ------------------------------------------------------------------------
 
-1.  Download `code.zip`, extract into project folder
-2.  Download `raw-data-db.zip` and `raw-data-other.zip` into directory `./data/raw`, and extract
-3.  Open script `run.R`. This script gives the overview of all analyses and is the starting point.
+1.  Download or clone this code repository. The script run.R gives the overview of all analyses and is the starting point.
+
+2.  Install packages (see `Package management & installation`)
+
+3.  Download two zip files containing the data for this analysis: [raw-data-db.zip](https://edmond.mpdl.mpg.de/api/access/datafile/212351) and [raw-data-other.zip](https://edmond.mpdl.mpg.de/api/access/datafile/212350), into directory `./data/raw`.
+
+4.  Extract zipped data files into directory `./data/raw` (code also provided for this within run.R)
+
+5. Run code to reproduce all analyses in run.R
 
 ## Package management & installation
 

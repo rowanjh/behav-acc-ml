@@ -2,8 +2,10 @@
 #' Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour 
 #' using accelerometry and machine learning: challenges and opportunities.
 #' 
-#' https://doi.org/...
-#' https://zenodo...
+#' Data are available at:
+#' https://edmond.mpdl.mpg.de/privateurl.xhtml?token=3c5da533-d851-4988-994c-f984c5f1b1a4
+#' dataset doi: https://doi.org/10.17617/3.KERIBB 
+#' 
 #' https://github.com/rowanjh/behav-acc-ml
 #' 
 #' Purpose: 
@@ -19,8 +21,6 @@
 #'      Package management with Renv. Install all required R packages by running
 #'      renv::restore().
 #'      
-#'      Scripts anonymized for peer review.
-#'      
 #' Date created:
 #'      May 2, 2023
 #'      
@@ -28,10 +28,15 @@
 library(here)
 library(rmarkdown)
 
-## ---- Download data ----
-# Download raw data zips into ./data/raw/ directory, and extract.
-# unzip(here("data","raw","data-raw-db.zip"), exdir = here("data","raw"))
-# unzip(here("data","raw","data-raw-other.zip"), exdir = here("data","raw"))
+## ---- Download & extract data ----
+# Download two zip files containing raw data, save in './data/raw/' directory.
+# Download URLs:
+# https://edmond.mpdl.mpg.de/api/access/datafile/212351
+# https://edmond.mpdl.mpg.de/api/access/datafile/212350
+
+# # Unzip dataset, extract into the './data/raw' directory
+unzip(here("data","raw","data-raw-db.zip"), exdir = here("data","raw"))
+unzip(here("data","raw","data-raw-other.zip"), exdir = here("data","raw"))
 
 ## ---- Clean data ----
 
