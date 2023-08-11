@@ -29,9 +29,9 @@ The dataset is available from a repository on [Edmond](https://edmond.mpdl.mpg.d
 
 3.  Download two zip files containing the data for this analysis: [raw-data-db.zip](https://edmond.mpdl.mpg.de/api/access/datafile/212351) and [raw-data-other.zip](https://edmond.mpdl.mpg.de/api/access/datafile/212350), into directory `./data/raw`.
 
-4.  Extract zipped data files into directory `./data/raw` (code also provided for this within run.R)
+4.  Extract zipped data files into directory `./data/raw` (code is provided for this within run.R)
 
-5. Run code to reproduce all analyses in run.R
+5.  Run code in run.R to reproduce all analyses
 
 ## Package management & installation
 
@@ -58,6 +58,20 @@ Raw accelerometer data are stored in a large sqlite database (\~81GB unzipped), 
 -   `data/clean` contains calibrated, time-synchronised data with labels
 -   `data/windowed` contains the full windowed dataset with summary features for each window
 -   `outputs` contains model results, exploratory plots, and intermediate outputs
+
+## Dataset
+
+------------------------------------------------------------------------
+
+The dataset is available at [Edmond](https://edmond.mpdl.mpg.de/privateurl.xhtml?token=3c5da533-d851-4988-994c-f984c5f1b1a4). Two zip files are included, which contain the following:
+
+-   `ruff-acc.db` is an sqlite3 database containing raw accelerometer data from 30 birds, each recording having a duration of 5-8 days. Approx 80GB disk space required.
+-   `logger_deployment_notes.csv` contains information about each accelerometer deployment (e.g. deployment times, bird measurements)
+-   `ruff_behaviour_tidy_2022-11-16.csv` contains bird behavioural data, scored from videos using BORIS software
+-   `calibration_recordings_6O_Apr2022.csv` contains information about accelerometer calibration sessions
+-   `6O_calibration_files` is a directory containing raw accelerometer data recorded during calibration sessions.
+
+More detail about each file is given in the data readme, which is available on Edmond or at `./data/raw/README-rawdata.md`
 
 # Acknowledgements
 
