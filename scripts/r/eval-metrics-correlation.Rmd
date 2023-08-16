@@ -221,10 +221,19 @@ rf_counts <- count_by_bird(rf_preds,
 
 ```{r Subset to RF focal birds and calculate correlation coefficient}
 rf_counts_focal <- rf_counts %>% filter(id %in% focal_birds)
+    
+rf_cors <- rf_counts_focal |>
+    split(f = list(rf_counts_focal$model_id, rf_counts_focal$behaviour), 
+          drop = TRUE) |>
+    map(function(x){
+        result <- cor.test(x$perc_truth, x$perc_pred, method = "spearman", exact=FALSE)
+        return(data.frame(cor_spearman = result$estimate, p = result$p.value))
+    }) |> bind_rows(.id = "id") |>
+    mutate(behaviour = gsub(".*[.]", "", id),
+           model_id = gsub("[.].*", "", id)) |> 
+    select(model_id, behaviour, cor_spearman, p) |>
+    arrange(model_id)
 
-rf_cors <- rf_counts_focal %>% 
-    group_by(model_id, behaviour) %>%
-    dplyr::summarize(cor_spearman = cor(x=perc_truth, y=perc_pred, method="spearman"))
 ```
 
 # Hidden Markov Models
@@ -263,9 +272,17 @@ hmm_counts <- count_by_bird(hmm_preds,
 ```{r Subset to HMM focal birds and calculate correlation coefficient}
 hmm_counts_focal <- hmm_counts %>% filter(id %in% focal_birds)
 
-hmm_cors <- hmm_counts_focal %>% 
-    group_by(model_id, behaviour) %>%
-    dplyr::summarize(cor_spearman = cor(x=perc_truth, y=perc_pred, method="spearman"))
+hmm_cors <- hmm_counts_focal |>
+    split(f = list(hmm_counts_focal$model_id, hmm_counts_focal$behaviour), 
+          drop = TRUE) |>
+    map(function(x){
+        result <- cor.test(x$perc_truth, x$perc_pred, method = "spearman", exact=FALSE)
+        return(data.frame(cor_spearman = result$estimate, p = result$p.value))
+    }) |> bind_rows(.id = "id") |>
+    mutate(behaviour = gsub(".*[.]", "", id),
+           model_id = gsub("[.].*", "", id)) |> 
+    select(model_id, behaviour, cor_spearman, p) |>
+    arrange(model_id)
 ```
 
 # Neural networks
@@ -302,9 +319,17 @@ nn_counts <- count_by_bird(nn_preds,
 ```{r Subset to NN focal birds and calculate correlation coefficient}
 nn_counts_focal <- nn_counts %>% filter(id %in% focal_birds)
 
-nn_cors <- nn_counts_focal %>% 
-    group_by(model_id, behaviour) %>%
-    dplyr::summarize(cor_spearman = cor(x=perc_truth, y=perc_pred, method="spearman"))
+nn_cors <- nn_counts_focal |>
+    split(f = list(nn_counts_focal$model_id, nn_counts_focal$behaviour), 
+          drop = TRUE) |>
+    map(function(x){
+        result <- cor.test(x$perc_truth, x$perc_pred, method = "spearman", exact=FALSE)
+        return(data.frame(cor_spearman = result$estimate, p = result$p.value))
+    }) |> bind_rows(.id = "id") |>
+    mutate(behaviour = gsub(".*[.]", "", id),
+           model_id = gsub("[.].*", "", id)) |> 
+    select(model_id, behaviour, cor_spearman, p) |>
+    arrange(model_id)
 ```
 
 # Tidy and export summarised data
