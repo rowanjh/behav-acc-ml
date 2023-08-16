@@ -28,6 +28,7 @@ library(here)
 input_dir <- here("outputs","eval")
 output_dir <- here("outputs","tables-figures")
 options(huxtable.knit_print_df = TRUE)
+options(scipen=100)
 ```
 
 ```{r Set number of digits}
@@ -41,13 +42,13 @@ set_flextable_defaults(
   padding = 0.25,
   font.color = "black",
   font.family = "Calibri",
-  big.mark = ",",
+  big.mark = " ",
   na_str = " ",
   nan_str = " "
 )
 
-port_width <- 18
-land_width <- 23
+port_width <- 16
+land_width <- 24
 ```
 
 ```{r Create list of focal birds}
@@ -76,36 +77,41 @@ format_mean_sd <- function(mean, sd){
 
 rename_behaviours <- function(behs) {
     new_behs <- behs %>%
-        str_replace("flying", "fly") %>%
-        str_replace("foraging or drinking", "forage or drink") %>%
-        str_replace("preening", "preen") %>%
-        str_replace("resting", "rest") %>%
-        str_replace("vigilance", "vigilant") %>%
-        str_replace("walking or running", "walk or run") %>%
-        str_replace("aggressive posturing", "forward aggressive") %>%
-        str_replace("dynamic squatting", "dynamic squat") %>%
-        str_replace("static squatting", "static squat") %>%
-        str_replace("courtship/territorial", "mating behaviours")
+        str_replace("flying", "Fly") %>%
+        str_replace("foraging or drinking", "Forage or drink") %>%
+        str_replace("preening", "Preen") %>%
+        str_replace("resting", "Rest") %>%
+        str_replace("vigilance", "Vigilant") %>%
+        str_replace("walking or running", "Walk or run") %>%
+        str_replace("aggressive posturing", "Forward aggressive") %>%
+        str_replace("dynamic squatting", "Dynamic squat") %>%
+        str_replace("static squatting", "Static squat") %>%
+        str_replace("being mounted", "Being mounted") %>%
+        str_replace("copulation attempt", "Copulation attempt") %>%
+        str_replace("mounting male", "Mounting male") %>%
+        str_replace("other", "Other") %>%
+        str_replace("courtship/territorial", "Mating behaviours") %>%
+        str_replace("rest/Vigilant","Rest/vigilant")
     return(new_behs)
 }
 
 order_behaviours <- function(behs) {
     ordered_behs <- ordered(behs, 
-                            levels = c("fly",
-                                              "forage or drink",
-                                              "preen",
-                                              "rest",
-                                              "vigilant",
-                                              "walk or run",
-                                              "forward aggressive",
-                                              "dynamic squat",
-                                              "static squat",
-                                              "copulation attempt",
-                                              "mounting male",
-                                              "being mounted",
-                                              "mating behaviours",
-                                              "rest/vigilant",
-                                              "other"))
+                            levels = c("Fly",
+                                              "Forage or drink",
+                                              "Preen",
+                                              "Rest",
+                                              "Vigilant",
+                                              "Walk or run",
+                                              "Forward aggressive",
+                                              "Dynamic squat",
+                                              "Static squat",
+                                              "Copulation attempt",
+                                              "Mounting male",
+                                              "Being mounted",
+                                              "Mating behaviours",
+                                              "Rest/vigilant",
+                                              "Other"))
     return(ordered_behs)
 }
 
@@ -141,7 +147,7 @@ order_ids <- function(ids) {
 }
 ```
 
-# Behaviour summary (Table 1)
+# Behaviour summary (Figure 2)
 
 ```{r Import windowed and behavioural data}
 windowed_dat <- fread(here("data","windowed","windowed-data.csv"))
@@ -152,14 +158,15 @@ beh_full <- fread(here("data","clean", "ruff_behaviours_adjusted_for_drift.csv")
 beh_counts <- windowed_dat %>%
     group_by(majority_behaviour) %>%
     rename(Behaviour = majority_behaviour) %>%
-    summarise(`total duration (s)`=n(),
-              #`n bouts`=n_distinct(beh_event_id),
-              `% transitions`=sum(transition==TRUE)/`total duration (s)`*100)
+    summarise(total_dur=n(),
+              `% transitions`=sum(transition==TRUE)/total_dur*100) %>%
+    select(!total_dur)
 
 beh_duration <- beh_full %>%
     group_by(behaviour) %>%
     rename(Behaviour = behaviour) %>%
-    summarise(`mean duration (s)` = mean(duration_secs))
+    summarise(`total duration (s)`=sum(duration_secs),
+              `mean bout (s)` = mean(duration_secs))
 
 beh_counts <- left_join(beh_counts, beh_duration, by="Behaviour")
 ```
@@ -172,22 +179,22 @@ beh_counts$`% transitions` <- rnd(beh_counts$`% transitions`)
 
 
 beh_counts <- beh_counts %>%
-    mutate(Description = case_when(Behaviour=="fly" ~ "Flying",
-                                    Behaviour=="forage or drink" ~ "Handling food, drinking, or lowering head to search for food",
-                                    Behaviour=="preen" ~ "Preening feathers using bill",
-                                    Behaviour=="rest" ~ "Sitting or standing with eyes closing or bill tucked into feathers",
-                                    Behaviour=="vigilant" ~ "Sitting or standing with head upright, looking around",
-                                    Behaviour=="walk or run" ~ "Walking or running in an upright posture",
-                                    Behaviour=="forward aggressive" ~ "Standing with body angled forwards and bill horizontal. Can be accompanied by bill thrusting, stamping, tail trembling and/or charging",
-                                    Behaviour=="dynamic squat" ~ "Shuffling while in a horizontal posture, with bill pointed vertically at the ground",
-                                    Behaviour=="static squat" ~ "Standing or sitting still in a tense horizontal posture, with bill pointed at the ground",
-                                    Behaviour=="copulation attempt" ~ "Mounting female and attempting to copulate, bending tail downwards",
-                                    Behaviour=="mounting male" ~ "Mounting another male. Often includes shaking the tail from side to side",
-                                    Behaviour=="being mounted" ~ "Being mounted by another male",
-                                   Behaviour=="other" ~ "All other behaviours",
+    mutate(Description = case_when(Behaviour=="Fly" ~ "Flying",
+                                    Behaviour=="Forage or drink" ~ "Handling food, drinking, or lowering head to search for food",
+                                    Behaviour=="Preen" ~ "Preening feathers using bill",
+                                    Behaviour=="Rest" ~ "Sitting or standing with eyes closing or bill tucked into feathers",
+                                    Behaviour=="Vigilant" ~ "Sitting or standing with head upright, looking around",
+                                    Behaviour=="Walk or run" ~ "Walking or running in an upright posture",
+                                    Behaviour=="Forward aggressive" ~ "Standing with body angled forwards and bill horizontal. Can be accompanied by bill thrusting, stamping, tail trembling and/or charging",
+                                    Behaviour=="Dynamic squat" ~ "Shuffling while in a horizontal posture, with bill pointed vertically at the ground",
+                                    Behaviour=="Static squat" ~ "Standing or sitting still in a tense horizontal posture, with bill pointed at the ground",
+                                    Behaviour=="Copulation attempt" ~ "Mounting female and attempting to copulate, bending tail downwards",
+                                    Behaviour=="Mounting male" ~ "Mounting another male. Often includes shaking the tail from side to side",
+                                    Behaviour=="Being mounted" ~ "Being mounted by another male",
+                                   Behaviour=="Other" ~ "All other behaviours",
                                     TRUE ~ "error")) %>%
     relocate(Description, .after = Behaviour) %>%
-    relocate(`% transitions`, .after = `mean duration (s)`)
+    relocate(`% transitions`, .after = `mean bout (s)`)
 
 beh_counts
 ```
@@ -199,8 +206,8 @@ desc_col_width <- 6
 beh_flex <- beh_counts %>%
     flextable() %>%
     align(align = "left", part="all") %>%
-    colformat_double(j=4,
-                     digits=2) %>%
+    colformat_double(j=3,
+                     digits=0) %>%
     align(j=3:5, align="right", part="all") %>%
     valign(valign="top", part="body") %>%
     line_spacing(space = 1.5, part = "all") %>%
@@ -223,11 +230,11 @@ save_as_docx(beh_flex, path = here(output_dir, "behaviour_summary.docx"),
 ## Behaviour summary by individual (Table A?)
 
 ```{r Behaviour counts by individual}
-beh_ind <- windowed_dat %>%
-    group_by(majority_behaviour, ruff_id) %>%
-    rename(Behaviour = majority_behaviour) %>%
-    summarise(`total duration (s)`=n(),
-              `n bouts`=n_distinct(beh_event_id))
+beh_ind <- beh_full %>%
+    group_by(behaviour, ruff_id) %>%
+    rename(Behaviour = behaviour) %>%
+    summarise(`total duration (s)`=sum(duration_secs),
+              `mean duration (s)` = mean(duration_secs))
 
 beh_ind$ruff_id <- rename_ids(beh_ind$ruff_id)
 beh_ind$ruff_id <- order_ids(beh_ind$ruff_id)
@@ -236,75 +243,74 @@ beh_ind$Behaviour <- rename_behaviours(beh_ind$Behaviour)
 beh_ind$Behaviour <- order_behaviours(beh_ind$Behaviour)
 ```
 
-```{r Format individual counts}
-beh_ind_wide <- beh_ind %>%
-    select(!`n bouts`) %>%
+```{r Format individual behaviour duration}
+beh_ind_formatted <- beh_ind %>%
+    ungroup() %>%
+    complete(Behaviour, ruff_id, fill = list(`total duration (s)` = 0,
+                                             `mean duration (s)` = 0)) |>
+    mutate(dur_combined=paste0(round(`total duration (s)`, 0),
+                               "\n(", 
+                               sprintf(round(`mean duration (s)`, 2), fmt = '%#.2f'), 
+                               ")")) %>%
+    select(Behaviour, ruff_id, dur_combined)
+
+beh_ind_wide <- beh_ind_formatted %>%
     pivot_wider(.,
                 names_from = ruff_id,
-                values_from = `total duration (s)`)
+                values_from = `dur_combined`)
 
 beh_ind_wide$Behaviour <- rename_behaviours(beh_ind_wide$Behaviour)
 beh_ind_wide$Behaviour <- order_behaviours(beh_ind_wide$Behaviour)
 beh_ind_wide <- beh_ind_wide %>% 
-    arrange(Behaviour) %>%
-     mutate_all(., ~replace_na(.,0))
+    arrange(Behaviour)
 beh_ind_wide
 ```
-```{r Create flextable for individual behaviours}
+```{r Create flextable for focal behaviour duration}
 beh_col_width <- 3.5
 
-beh_ind_flex <- beh_ind_wide %>%
+beh_focal_flex <- beh_ind_wide %>%
+    select(!(I5:S7)) %>%
+    filter(Behaviour!="Mating behaviours" & Behaviour!="Rest/vigilant") %>%
     flextable() %>%
     align(align = "left", part="all") %>%
-    # colformat_double(j=4,
-    #                  digits=2) %>%
-    # align(j=3:5, align="right", part="all") %>%
-    # valign(valign="top", part="body") %>%
-    line_spacing(space = 1.5, part = "all") %>%
+    valign(valign="top", part="body") %>%
+    line_spacing(space = 1.15, part = "all") %>%
+    padding(padding.bottom = 10, part = "body") %>%
     font(fontname="Calibri", part="all") %>%
     # ---- Rename and format headings ----
     bold(part="header") %>%
     # ---- Set width ----
-    width(width=(land_width-beh_col_width)/(ncol(beh_ind_wide)-1), unit="cm") %>%
+    width(width=(port_width-beh_col_width)/(ncol(beh_ind_wide)-6), unit="cm") %>%
     width(j=1, beh_col_width, "cm")
 
-beh_ind_flex
+beh_focal_flex
 ```
-
-```{r Format individual events}
-event_ind_wide <- beh_ind %>%
-    select(!`total duration (s)`) %>%
-    pivot_wider(.,
-                names_from = ruff_id,
-                values_from = `n bouts`)
-
-event_ind_wide$Behaviour <- rename_behaviours(event_ind_wide$Behaviour)
-event_ind_wide$Behaviour <- order_behaviours(event_ind_wide$Behaviour)
-event_ind_wide <- event_ind_wide %>% 
-    arrange(Behaviour) %>%
-     mutate_all(., ~replace_na(.,0))
-event_ind_wide
-```
-
-```{r Create flextable for individual behaviours}
+```{r Create flextable for rare bird behaviour duration}
 beh_col_width <- 3.5
 
-event_ind_flex <- event_ind_wide %>%
+beh_rare_flex <- beh_ind_wide %>%
+    select(!(I1:F2)) %>%
+    filter(Behaviour!="Mating behaviours" & Behaviour!="Rest/vigilant") %>%
     flextable() %>%
     align(align = "left", part="all") %>%
-    # colformat_double(j=4,
-    #                  digits=2) %>%
-    # align(j=3:5, align="right", part="all") %>%
-    # valign(valign="top", part="body") %>%
-    line_spacing(space = 1.5, part = "all") %>%
+    valign(valign="top", part="body") %>%
+    line_spacing(space = 1.15, part = "all") %>%
+    padding(padding.bottom = 10, part = "body") %>%
     font(fontname="Calibri", part="all") %>%
     # ---- Rename and format headings ----
     bold(part="header") %>%
     # ---- Set width ----
-    width(width=(land_width-beh_col_width)/(ncol(event_ind_wide)-1), unit="cm") %>%
+    width(width=(port_width-beh_col_width)/(ncol(beh_ind_wide)-6), unit="cm") %>%
     width(j=1, beh_col_width, "cm")
 
-event_ind_flex
+beh_rare_flex
+```
+
+```{r Save individual counts to get sense of size}
+save_as_docx(`focal males`=beh_focal_flex,
+             `other males`=beh_rare_flex,
+             path = here(output_dir, "behaviour_ind_summary_duration.docx"), 
+             align = "left")
 ```
 
 # Acc recording summary (Table A?)
@@ -349,8 +355,7 @@ rec_info_flex <-
     # ---- Basic formatting ----
     rec_info_wide  %>%
     flextable() %>%
-    # merge_v(j = "behaviour", target = "behaviour", part = "body", combine = FALSE) %>%
-    # valign(valign="top") %>%
+    valign(valign="center") %>%
     align(align = "left", part="all") %>%
     line_spacing(space = 1.25, part = "all") %>%
     font(fontname="Calibri", part="all") %>%
@@ -365,12 +370,11 @@ rec_info_flex <-
                       duration_recording2="Duration (days)",
                       start_recording3="Start",
                       duration_recording3="Duration (days)") %>%
-   # bold(i = ~ !is.na(behaviour_type), part="body") %>%
     add_header_row(values = c("","Recording 1", "Recording 2", "Recording 3"),
                    colwidths = c(2, 2, 2, 2)) %>%
     bold(part="header") %>%
     # ---- Set width ----
-    width(width=(port_width-first_col_width-second_col_width)/(ncol(rec_info_wide)-2), unit="cm") %>%
+    width(width=(land_width-first_col_width-second_col_width)/(ncol(rec_info_wide)-2), unit="cm") %>%
     width(j=1, first_col_width, "cm") %>%
     width(j=2, second_col_width, "cm")
 
@@ -529,12 +533,12 @@ class_table <- class_summary %>%
            split_type = str_replace(split_type, "timesplit", "timeSTRAT"),
            classes = str_replace(classes, "original_classes", "Original classes"),
            classes = str_replace(classes, "reduced_classes", "Reduced classes"),
-           behaviour_type = case_when(behaviour=="forward aggressive" ~ "Mating behaviours",
-                                      behaviour=="static squat" ~ "Mating behaviours",
-                                      behaviour=="dynamic squat" ~ "Mating behaviours",
-                                      behaviour=="mounting male" ~ "Mating behaviours",
-                                      behaviour=="copulation attempt" ~ "Mating behaviours",
-                                      behaviour=="being mounted" ~ "Mating behaviours",
+           behaviour_type = case_when(behaviour=="Forward aggressive" ~ "Mating behaviours",
+                                      behaviour=="Static squat" ~ "Mating behaviours",
+                                      behaviour=="Dynamic squat" ~ "Mating behaviours",
+                                      behaviour=="Mounting male" ~ "Mating behaviours",
+                                      behaviour=="Copulation attempt" ~ "Mating behaviours",
+                                      behaviour=="Being mounted" ~ "Mating behaviours",
                                       classes=="Reduced classes" ~ "Combined behaviours",
                                       TRUE ~ "Non-mating behaviours"))
 
@@ -564,7 +568,7 @@ class_table_flex <-
     # ---- Basic formatting ----
     class_table_wide %>%
     filter(metric=="fmeas") %>%
-    filter(behaviour!="other") %>%
+    filter(behaviour!="Other") %>%
     select(!metric) %>%
     as_grouped_data(groups="behaviour_type") %>%
     flextable() %>%
@@ -628,12 +632,12 @@ cors_table <- cors %>%
     select(model_type, split_type, behaviour, cor_spearman, classes) %>%
     mutate(classes = str_replace(classes, "original_classes", "Original classes"),
            classes = str_replace(classes, "reduced_classes", "Reduced classes"),
-           behaviour_type = case_when(behaviour=="forward aggressive" ~ "Mating behaviours",
-                                      behaviour=="static squat" ~ "Mating behaviours",
-                                      behaviour=="dynamic squat" ~ "Mating behaviours",
-                                      behaviour=="mounting male" ~ "Mating behaviours",
-                                      behaviour=="copulation attempt" ~ "Mating behaviours",
-                                      behaviour=="being mounted" ~ "Mating behaviours",
+           behaviour_type = case_when(behaviour=="Forward aggressive" ~ "Mating behaviours",
+                                      behaviour=="Static squat" ~ "Mating behaviours",
+                                      behaviour=="Dynamic squat" ~ "Mating behaviours",
+                                      behaviour=="Mounting male" ~ "Mating behaviours",
+                                      behaviour=="Copulation attempt" ~ "Mating behaviours",
+                                      behaviour=="Being mounted" ~ "Mating behaviours",
                                       classes=="Reduced classes" ~ "Combined behaviours",
                                       TRUE ~ "Non-mating behaviours"))
 
@@ -657,7 +661,7 @@ cors_table_tidy <- cors_table_wide %>%
            RF_randSTRAT, RF_timeSTRAT, RF_LSIO,
            HMM_timeSTRAT, HMM_LSIO,
            NN_LSIO) %>%
-    filter(behaviour!="other")
+    filter(behaviour!="Other")
 ```
 
 ```{r Format correlation table table}
@@ -756,7 +760,6 @@ plot_cor <- function(behaviour_data, max, break_interval,
                        aes(x=perc_truth, y=perc_pred))+
         theme_classic()+
         geom_abline(slope=1, intercept=0, colour="grey", linetype="dotted")+
-        # facet_wrap(~behaviour, scales="free", nrow=1)+
         coord_cartesian(xlim=c(0,max),
                         ylim=c(0,max))+
         scale_x_continuous(breaks=seq(0, max, by=break_interval),
@@ -770,12 +773,20 @@ plot_cor <- function(behaviour_data, max, break_interval,
               axis.text=element_text(size=text_size, family = text_family),
               #axis.title=element_text(size=text_size+1),
               axis.title=element_blank(),
-              plot.title=element_text(size=text_size, face="italic", family = text_family),
+              plot.title=element_text(size=text_size, family = text_family),
               plot.margin = unit(c(0.1, 0, 0.7, 0), "lines"))+
         ggtitle(label=paste0("  ", beh))+
         annotate(geom="text", 
-                 label=paste0(" F1 = ", f1, "\n",
-                              " r = ", rnd(r)),
+                 label=paste0(" F1 = ", f1),
+                 x = 0, y = Inf, hjust = 0, vjust = 1.1,
+                 size=(text_size)/.pt, family=text_family)+
+        annotate(geom="text",
+                 label=paste0("\n", " r "),
+                 x = 0, y = Inf, hjust = 0, vjust = 1.1,
+                 size=(text_size)/.pt, family=text_family,
+                 fontface = 'italic')+
+        annotate(geom="text",
+                 label=paste0("\n", "    = ", rnd(r)),
                  x = 0, y = Inf, hjust = 0, vjust = 1.1,
                  size=(text_size)/.pt, family=text_family)
         # geom_text(data = cors_table %>% filter(behaviour==behaviour),
@@ -791,88 +802,88 @@ plot_cor(counts_sub, max=60, break_interval=10, cors_table_sub)
 ```
 
 ```{r Create correlation plots}
-plot_a <- plot_cor(counts_sub %>% filter(behaviour=="fly"),
+plot_a <- plot_cor(counts_sub %>% filter(behaviour=="Fly"),
                    max=6,
                    break_interval=1)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_b <- plot_cor(counts_sub %>% filter(behaviour=="forage or drink"),
+plot_b <- plot_cor(counts_sub %>% filter(behaviour=="Forage or drink"),
                    max=25,
                    break_interval=5)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_c <- plot_cor(counts_sub %>% filter(behaviour=="preen"),
+plot_c <- plot_cor(counts_sub %>% filter(behaviour=="Preen"),
                    max=30,
                    break_interval=10)#+
     #     ylab("\n")+
     # xlab("\n")
 
-plot_d <- plot_cor(counts_sub %>% filter(behaviour=="rest"),
+plot_d <- plot_cor(counts_sub %>% filter(behaviour=="Rest"),
                    max=60,
                    break_interval=20)#+
     #     ylab("\n")+
     # xlab("\n")
 
-plot_e <- plot_cor(counts_sub %>% filter(behaviour=="vigilant"),
+plot_e <- plot_cor(counts_sub %>% filter(behaviour=="Vigilant"),
                    max=45,
                    break_interval=10)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_f <- plot_cor(counts_sub %>% filter(behaviour=="walk or run"),
+plot_f <- plot_cor(counts_sub %>% filter(behaviour=="Walk or run"),
                    max=25,
                    break_interval=5)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_g <- plot_cor(counts_sub %>% filter(behaviour=="forward aggressive"),
+plot_g <- plot_cor(counts_sub %>% filter(behaviour=="Forward aggressive"),
                    max=40,
                    break_interval=10)#+
     # xlab("\n")
 
-plot_h <- plot_cor(counts_sub %>% filter(behaviour=="dynamic squat"),
+plot_h <- plot_cor(counts_sub %>% filter(behaviour=="Dynamic squat"),
                    max=30,
                    break_interval=10)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_i <- plot_cor(counts_sub %>% filter(behaviour=="static squat"),
+plot_i <- plot_cor(counts_sub %>% filter(behaviour=="Static squat"),
                    max=38,
                    break_interval=10)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_j <- plot_cor(counts_sub %>% filter(behaviour=="copulation attempt"),
+plot_j <- plot_cor(counts_sub %>% filter(behaviour=="Copulation attempt"),
                    max=3.2,
                    break_interval=1)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_k <- plot_cor(counts_sub %>% filter(behaviour=="mounting male"),
+plot_k <- plot_cor(counts_sub %>% filter(behaviour=="Mounting male"),
                    max=3.2,
                    break_interval=1)#+
     #     ylab("\n")+
     # xlab("\n")
 
-plot_l <- plot_cor(counts_sub %>% filter(behaviour=="being mounted"),
+plot_l <- plot_cor(counts_sub %>% filter(behaviour=="Being mounted"),
                    max=3.2,
                    break_interval=1)#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_m <- plot_cor(counts_sub %>% filter(behaviour=="mating behaviours"),
+plot_m <- plot_cor(counts_sub %>% filter(behaviour=="Mating behaviours"),
                    max=65,
                    break_interval=20)+
-    ggtitle(label=paste0("  ", "mating behs (pooled)"))#+
+    ggtitle(label=paste0("  ", "Mating behs (pooled)"))#+
     # ylab("\n")+
     # xlab("\n")
 
-plot_n <- plot_cor(counts_sub %>% filter(behaviour=="rest/vigilant"),
+plot_n <- plot_cor(counts_sub %>% filter(behaviour=="Rest/vigilant"),
                    max=65,
                    break_interval=20)+
-     ggtitle(label=paste0("  ", "rest/vigilant (pooled)"))#+
+     ggtitle(label=paste0("  ", "Rest/vigilant (pooled)"))#+
     # ylab("\n")
 ```
 
@@ -925,7 +936,7 @@ nn_loso_preds$truth_beh <- order_behaviours(nn_loso_preds$truth_beh)
 
 ```{r Create table properties}
 confmat_beh_col_width <- 3
-true_pos_colour <- "honeydew2"
+true_pos_face <- "bold"
 
 format_confmat_ft <- function(x){
     x %>%
@@ -941,19 +952,19 @@ format_confmat_ft <- function(x){
     valign(i=2, valign="bottom", part="header") %>%
     bold(i=1, part="header") %>%
     bold(i=2, j=1, part="header") %>%
-    set_header_labels(values = list(fly = "FLY",
-                                    `forage or drink` = "FORAGE",
-                                    preen = "PREEN",
-                                    rest = "REST",
-                                    vigilant = "VIGIL",
-                                    `walk or run` = "WALK",
-                                    other = "OTHER",
-                                    `forward aggressive` = "AGGR",
-                                    `dynamic squat` = "DYN",
-                                    `static squat`="STAT",
-                                    `copulation attempt` = "COPUL",
-                                    `mounting male` = "MOUNT",
-                                    `being mounted` = "MOUNTED")) %>%
+    set_header_labels(values = list(Fly = "FLY",
+                                    `Forage or drink` = "FORAGE",
+                                    Preen = "PREEN",
+                                    Rest = "REST",
+                                    Vigilant = "VIGIL",
+                                    `Walk or run` = "WALK",
+                                    Other = "OTHER",
+                                    `Forward aggressive` = "AGGR",
+                                    `Dynamic squat` = "DYN",
+                                    `Static squat`="STAT",
+                                    `Copulation attempt` = "COPUL",
+                                    `Mounting male` = "MOUNT",
+                                    `Being mounted` = "MOUNTED")) %>%
     # ---- Remove border from top left cell ----
     border(i=1,j=1, part="header",border = fp_border(color="white")) %>%
     border(i=1, part="header",border.top = fp_border(color="black")) %>%
@@ -964,23 +975,21 @@ format_confmat_ft <- function(x){
     italic(i=2, j=9:14, part="header") %>%
     italic(i=8:13, j=1, part="body")%>%
     # ---- Format totals ----
-    bold(i=nrow(x), part="body") %>%
-    bold(j=ncol(x)+1, part="all") %>%
     colformat_num(j = c("Total"), digits=0) %>%
     # ---- Add shading for true positives ----
-    highlight(i = 1, j = 2, part = "body", color=true_pos_colour) %>%
-    highlight(i = 2, j = 3, part = "body", color=true_pos_colour) %>%
-    highlight(i = 3, j = 4, part = "body", color=true_pos_colour) %>%
-    highlight(i = 4, j = 5, part = "body", color=true_pos_colour) %>%
-    highlight(i = 5, j = 6, part = "body", color=true_pos_colour) %>%
-    highlight(i = 6, j = 7, part = "body", color=true_pos_colour) %>%
-    highlight(i = 7, j = 8, part = "body", color=true_pos_colour) %>%
-    highlight(i = 8, j = 9, part = "body", color=true_pos_colour) %>%
-    highlight(i = 9, j = 10, part = "body", color=true_pos_colour) %>%
-    highlight(i = 10, j = 11, part = "body", color=true_pos_colour) %>%
-    highlight(i = 11, j = 12, part = "body", color=true_pos_colour) %>%
-    highlight(i = 12, j = 13, part = "body", color=true_pos_colour) %>%
-    highlight(i = 13, j = 14, part = "body", color=true_pos_colour)
+    bold(i = 1, j = 2, part = "body") %>%
+    bold(i = 2, j = 3, part = "body") %>%
+    bold(i = 3, j = 4, part = "body") %>%
+    bold(i = 4, j = 5, part = "body") %>%
+    bold(i = 5, j = 6, part = "body") %>%
+    bold(i = 6, j = 7, part = "body") %>%
+    bold(i = 7, j = 8, part = "body") %>%
+    bold(i = 8, j = 9, part = "body") %>%
+    bold(i = 9, j = 10, part = "body") %>%
+    bold(i = 10, j = 11, part = "body") %>%
+    bold(i = 11, j = 12, part = "body") %>%
+    bold(i = 12, j = 13, part = "body") %>%
+    bold(i = 13, j = 14, part = "body")
 }
 ```
 
@@ -991,9 +1000,9 @@ rf_confmat <- as.data.frame.matrix(table(rf_loso_preds$truth_beh, rf_loso_preds$
 
 # ---- Refine confusion matrix ----
 rf_confmat <- rf_confmat %>%
-    filter(row.names(rf_confmat)!="mating behaviours" &
-               row.names(rf_confmat)!="rest/vigilant") %>%
-    select(!c("mating behaviours","rest/vigilant"))
+    filter(row.names(rf_confmat)!="Mating behaviours" &
+               row.names(rf_confmat)!="Rest/vigilant") %>%
+    select(!c("Mating behaviours","Rest/vigilant"))
 
 rf_confmat <- bind_rows(rf_confmat,
                         rf_confmat %>% summarise_all(sum)) %>%
@@ -1013,9 +1022,9 @@ hmm_confmat <- as.data.frame.matrix(table(hmm_loso_preds$truth_beh, hmm_loso_pre
 
 # ---- Refine confusion matrix ----
 hmm_confmat <- hmm_confmat %>%
-    filter(row.names(hmm_confmat)!="mating behaviours" &
-               row.names(hmm_confmat)!="rest/vigilant") %>%
-    select(!c("mating behaviours","rest/vigilant")) 
+    filter(row.names(hmm_confmat)!="Mating behaviours" &
+               row.names(hmm_confmat)!="Rest/vigilant") %>%
+    select(!c("Mating behaviours","Rest/vigilant")) 
 
 hmm_confmat <- bind_rows(hmm_confmat, 
                         hmm_confmat %>% summarise_all(sum)) %>%
@@ -1035,9 +1044,9 @@ nn_confmat <- as.data.frame.matrix(table(nn_loso_preds$truth_beh, nn_loso_preds$
 
 # ---- Refine confusion matrix ----
 nn_confmat <- nn_confmat %>%
-    filter(row.names(nn_confmat)!="mating behaviours" &
-               row.names(nn_confmat)!="rest/vigilant") %>%
-    select(!c("mating behaviours","rest/vigilant"))
+    filter(row.names(nn_confmat)!="Mating behaviours" &
+               row.names(nn_confmat)!="Rest/vigilant") %>%
+    select(!c("Mating behaviours","Rest/vigilant"))
 
 nn_confmat <- bind_rows(nn_confmat,
                         nn_confmat %>% summarise_all(sum)) %>%
