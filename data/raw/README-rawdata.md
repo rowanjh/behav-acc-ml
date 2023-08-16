@@ -38,25 +38,25 @@ Raw accelerometer data from loggers were converted to csv using software from th
 
 ### ruff-acc.db: acc table
 
-This table contains raw accelerometer data from deployments on Ruffs. Each row represents a single accelerometer sample (with one sample every 0.02 seconds). Datetime is derived from the accelerometer clock, so is subject to clock drift and may not align with standard time. There is a multicolumn index on recording_id and datetime.
+This table contains raw accelerometer data from deployments on Ruffs. Each row represents a single accelerometer sample (with one sample every 0.02 seconds). Datetime is derived from the accelerometer clock, so is subject to clock drift and is not synchronised with standard local time. The table includes some data from before and after the logger was on the bird; times when the logger was actually on the bird can be found in logger_deployment_notes.csv (see below). There is a multicolumn index on recording_id and datetime.
 
 | Column       | Description                                |
 |--------------|--------------------------------------------|
 | recording_id | unique ID code for accelerometer recording |
 | datetime     | sample datetime (in fractional seconds)    |
-| accx         | sample x-axis acceleration of sample       |
-| accy         | sample y-axis acceleration of sample       |
-| accz         | sample z-axis acceleration of sample       |
+| accx         | x-axis acceleration                        |
+| accy         | y-axis acceleration                        |
+| accz         | z-axis acceleration                        |
 
 ### ruff-acc.db: recordings table
 
-This table is a simple reference for the recording ID codes. Simplified `id` codes are used in the acc table to reduce storage requirements, which are here matched to the full `recording_id` used in other data sources throughout the project.
+This table is a simple reference for the recording ID codes. Simplified `id` codes (arbitrary numbers between 1 and 30) are used in the acc table to reduce storage requirements, which are here matched to the `recording_id` used across other project files.
 
-| Column       | Description                                                  |
-|------------------|------------------------------------------------------|
-| id           | unique code representing recording ID in the 'acc' table.    |
-| recording_id | the full recording ID (matches logger_deployment_notes.csv)  |
-| filename     | source file used for database import (not in public dataset) |
+| Column       | Description                                                                          |
+|-------------------|-----------------------------------------------------|
+| id           | unique numeric code representing recording_id in the 'acc' table.                    |
+| recording_id | recording ID used across other project files (including logger_deployment_notes.csv) |
+| filename     | source file used for database import (not in public dataset)                         |
 
 ------------------------------------------------------------------------
 
@@ -66,20 +66,20 @@ This table is a simple reference for the recording ID codes. Simplified `id` cod
 
 ### logger_deployment_notes.csv {#logger_deployment_notes.csv}
 
-This file contains contextual information for each accelerometer deployment, e.g. the bird ID and times when the logger was actually on the bird. Each row corresponds to a recording_id in ruff-acc.db. It includes the following columns:
+This file contains contextual information for each accelerometer deployment. Each row represents one deployment, which consists of one logger being turned on in the lab, attached to a bird in the aviary, collected from the bird some days later, then switched off. Each deployment has a unique recording_id that corresponds to a recording_id in the recordings table of ruff-acc.db. Dates and times are synchronised with standard local time. The file includes the following columns:
 
 | Column                            | Description                                               |
 |---------------------------------------|---------------------------------|
 | recording_id                      | unique identifier for accelerometer deployment            |
 | logger_id                         | unique identifier for each accelerometer device           |
-| start_date                        | deployment start date (when device was turned on)         |
-| start_time                        | deployment start time (when device was turned on)         |
-| start_dt                          | deployment start datetime (when device was turned on)     |
+| start_date                        | when device was turned on                                 |
+| start_time                        | when device was turned on                                 |
+| start_dt                          | when device was turned on                                 |
 | pre_calibration_start_dt          | when the first calibration was conducted                  |
 | post_calibration_start_dt         | when the final calibration was conducted                  |
-| stop_date                         | deployment stop date (when device was turned off)         |
-| stop_time                         | deployment stop time (when device was turned off)         |
-| stop_dt                           | deployment stop datetime (when device was turned off)     |
+| stop_date                         | when device was turned off                                |
+| stop_time                         | when device was turned off                                |
+| stop_dt                           | when device was turned off                                |
 | filename                          | csv filename of raw accelerometer recording               |
 | capture_date                      | when bird was captured for accelerometer deployment       |
 | capture_time                      | when bird was captured for accelerometer deployment       |
@@ -103,14 +103,14 @@ This file contains contextual information for each accelerometer deployment, e.g
 | cal3_type                         | type of calibration (desk, flight, or stop)               |
 | cal4_time                         | datetime of the fourth calibration                        |
 | cal4_type                         | type of calibration (desk, flight, or stop)               |
-| data_analysis_start               | start of period when accelerometer is on the bird         |
-| data_analysis_end                 | end of period when accelerometer is on the bird           |
+| data_analysis_start               | unused column                                             |
+| data_analysis_end                 | unused column                                             |
 | other_procedures_during_recording | other capture events during study                         |
 | other_notes                       | notes                                                     |
 
 ### ruff_behaviour_tidy_2022-11-16.csv {#ruff_behaviour_tidy_2022-11-16.csv}
 
-This file includes bird behavioural data, scored from videos using BORIS software. It contains the following columns:
+This file includes bird behavioural data, scored from videos using BORIS software. Datetimes are synchronised with standard local time. The file has been tidied and reformatted from the raw BORIS output. It contains the following columns:
 
 | Column              | Description                                           |
 |---------------------------------------|---------------------------------|
@@ -167,7 +167,7 @@ This file gives details of each accelerometer recording used for 6-orientation (
 
 ### 6O_calibration_files {#6o_calibration_files}
 
-This directory contains .csv files with raw accelerometer data recorded during 6-orientation (6O) calibration. Recordings are at 50Hz, and each row represents a single sample (one row per 0.02 second interval). Times are derived from the accelerometer clock, so are subject to clock drift and may not align with standard time. Additional information about each accelerometer recording is given in `calibration_recordings_6O_Apr2022.csv`. Filenames have the following format:
+This directory contains .csv files with raw accelerometer data recorded during 6-orientation (6O) calibration. Recordings are at 50Hz, and each row represents a single sample (one row per 0.02 second interval). Times are derived from the accelerometer clock, so are subject to clock drift and are not synchronised to standard local time. Additional information about each accelerometer recording is given in `calibration_recordings_6O_Apr2022.csv`. Filenames have the following format:
 
 `[accelerometer model]_[accelerometer ID]_[start date of recording]_[start time of recording]_[sampling rate in hz][max acceleration in gs][resolution setting of accelerometer]_6O_S1, e.g. axy4.5_L24_2022-4-19_171111_50Hz16g10bit_6O_S1`.
 
@@ -181,4 +181,4 @@ Each accelerometer file contains the following columns:
 | accX      | x-axis acceleration of accelerometer sample             |
 | accY      | y-axis acceleration of accelerometer sample             |
 | accZ      | z-axis acceleration of accelerometer sample             |
-| Temp (?C) | Accelerometer temperature, unusued column, usually NA.  |
+| Temp (?C) | Accelerometer temperature, unused column, usually NA.   |
