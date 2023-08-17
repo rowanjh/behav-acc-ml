@@ -4,7 +4,7 @@
 
 This is the repository for the following paper:
 
-`Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour using accelerometry and machine learning: challenges and opportunities. Animal Behaviour, 2023`
+`Aulsebrook, Jacques-Hamilton, & Kempenaers (2023) Quantifying mating behaviour using accelerometry and machine learning: challenges and opportunities, 2023` (under review)
 
 # Overview
 
